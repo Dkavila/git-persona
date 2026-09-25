@@ -20,7 +20,7 @@ func sampleProfile(name, email string) config.Profile {
 	return config.Profile{
 		Name:      name,
 		Email:     email,
-		KeyPath:   filepath.Join("/home/git-persona/.ssh", "id_ed25519_"+name),
+		KeyPath:   filepath.Join("/home/user/.ssh", "id_ed25519_"+name),
 		CreatedAt: fixedTime,
 	}
 }
@@ -31,7 +31,7 @@ func TestProfileValidate(t *testing.T) {
 		profile config.Profile
 		wantErr bool
 	}{
-		{"valid", sampleProfile("work", "git-persona@corp.com"), false},
+		{"valid", sampleProfile("work", "dev@acme-corp.com"), false},
 		{"valid with dash", sampleProfile("work-eu", "d@corp.com"), false},
 		{"empty name", sampleProfile("", "d@corp.com"), true},
 		{"whitespace name", sampleProfile("   ", "d@corp.com"), true},
@@ -113,7 +113,7 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 
 	original := &config.Store{
 		Profiles: []config.Profile{
-			sampleProfile("work", "git-persona@corp.com"),
+			sampleProfile("work", "dev@acme-corp.com"),
 			sampleProfile("personal", "git@gmail.com"),
 		},
 		Active: "work",
@@ -152,7 +152,7 @@ func TestSave_JSONShape(t *testing.T) {
 	home := t.TempDir()
 
 	store := &config.Store{
-		Profiles: []config.Profile{sampleProfile("work", "git-persona@corp.com")},
+		Profiles: []config.Profile{sampleProfile("work", "dev@acme-corp.com")},
 		Active:   "work",
 	}
 	if err := store.Save(home); err != nil {
@@ -178,11 +178,11 @@ func TestSave_JSONShape(t *testing.T) {
 func TestAdd_DuplicateName(t *testing.T) {
 	store := &config.Store{}
 
-	if err := store.Add(sampleProfile("work", "git-persona@corp.com")); err != nil {
+	if err := store.Add(sampleProfile("work", "dev@acme-corp.com")); err != nil {
 		t.Fatalf("first Add() = %v, want nil", err)
 	}
 
-	err := store.Add(sampleProfile("work", "other@corp.com"))
+	err := store.Add(sampleProfile("work", "other@acme-corp.com"))
 	if !errors.Is(err, config.ErrDuplicateProfile) {
 		t.Fatalf("duplicate Add() error = %v, want ErrDuplicateProfile", err)
 	}
@@ -196,11 +196,11 @@ func TestAdd_DuplicateName(t *testing.T) {
 func TestAdd_DuplicateNameIsCaseInsensitive(t *testing.T) {
 	store := &config.Store{}
 
-	if err := store.Add(sampleProfile("work", "git-persona@corp.com")); err != nil {
+	if err := store.Add(sampleProfile("work", "dev@acme-corp.com")); err != nil {
 		t.Fatalf("first Add() = %v, want nil", err)
 	}
 
-	err := store.Add(sampleProfile("WORK", "other@corp.com"))
+	err := store.Add(sampleProfile("WORK", "other@acme-corp.com"))
 	if !errors.Is(err, config.ErrDuplicateProfile) {
 		t.Fatalf("case-variant Add() error = %v, want ErrDuplicateProfile", err)
 	}
@@ -220,7 +220,7 @@ func TestAdd_RejectsInvalidProfile(t *testing.T) {
 
 func TestGet(t *testing.T) {
 	store := &config.Store{}
-	if err := store.Add(sampleProfile("work", "git-persona@corp.com")); err != nil {
+	if err := store.Add(sampleProfile("work", "dev@acme-corp.com")); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 
@@ -229,8 +229,8 @@ func TestGet(t *testing.T) {
 		if !ok {
 			t.Fatal("Get(\"work\") ok = false, want true")
 		}
-		if got.Email != "git-persona@corp.com" {
-			t.Fatalf("Email = %q, want %q", got.Email, "git-persona@corp.com")
+		if got.Email != "dev@acme-corp.com" {
+			t.Fatalf("Email = %q, want %q", got.Email, "dev@acme-corp.com")
 		}
 	})
 
@@ -249,7 +249,7 @@ func TestGet(t *testing.T) {
 
 func TestSetActive_UpdatesActiveField(t *testing.T) {
 	store := &config.Store{}
-	if err := store.Add(sampleProfile("work", "git-persona@corp.com")); err != nil {
+	if err := store.Add(sampleProfile("work", "dev@acme-corp.com")); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	if err := store.Add(sampleProfile("personal", "git-persona@gmail.com")); err != nil {
@@ -268,7 +268,7 @@ func TestSetActive_UpdatesActiveField(t *testing.T) {
 // user typed, so that list output and key paths stay consistent.
 func TestSetActive_StoresCanonicalName(t *testing.T) {
 	store := &config.Store{}
-	if err := store.Add(sampleProfile("work", "git-persona@corp.com")); err != nil {
+	if err := store.Add(sampleProfile("work", "dev@acme-corp.com")); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 
@@ -282,7 +282,7 @@ func TestSetActive_StoresCanonicalName(t *testing.T) {
 
 func TestSetActive_UnknownProfile(t *testing.T) {
 	store := &config.Store{}
-	if err := store.Add(sampleProfile("work", "git-persona@corp.com")); err != nil {
+	if err := store.Add(sampleProfile("work", "dev@acme-corp.com")); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	if err := store.SetActive("work"); err != nil {
@@ -301,7 +301,7 @@ func TestSetActive_UnknownProfile(t *testing.T) {
 func TestRemove(t *testing.T) {
 	t.Run("removes profile and clears active", func(t *testing.T) {
 		store := &config.Store{}
-		if err := store.Add(sampleProfile("work", "git-persona@corp.com")); err != nil {
+		if err := store.Add(sampleProfile("work", "dev@acme-corp.com")); err != nil {
 			t.Fatalf("setup: %v", err)
 		}
 		if err := store.Add(sampleProfile("personal", "git-persona@gmail.com")); err != nil {
@@ -327,7 +327,7 @@ func TestRemove(t *testing.T) {
 
 	t.Run("keeps active when another profile is removed", func(t *testing.T) {
 		store := &config.Store{}
-		if err := store.Add(sampleProfile("work", "git-persona@corp.com")); err != nil {
+		if err := store.Add(sampleProfile("work", "dev@acme-corp.com")); err != nil {
 			t.Fatalf("setup: %v", err)
 		}
 		if err := store.Add(sampleProfile("personal", "git-persona@gmail.com")); err != nil {

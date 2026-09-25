@@ -19,7 +19,7 @@ func TestSave_CreatesDirWithPerms(t *testing.T) {
 
 	store := &config.Store{
 		Profiles: []config.Profile{
-			{Name: "work", Email: "git-persona@corp.com", KeyPath: "/home/git-persona/.ssh/id_ed25519_work"},
+			{Name: "work", Email: "dev@acme-corp.com", KeyPath: "/home/user/.ssh/id_ed25519_work"},
 		},
 		Active: "work",
 	}
