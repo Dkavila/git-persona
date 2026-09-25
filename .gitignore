@@ -1,6 +1,9 @@
-# Binaries
-git-persona
-git-persona.exe
+# Compiled binaries at the repo root.
+# These patterns are anchored with a leading slash: an unanchored "git-persona"
+# would also match the cmd/git-persona package directory and silently exclude
+# the entry point from version control.
+/git-persona
+/git-persona.exe
 /bin/
 /dist/
 

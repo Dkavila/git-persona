@@ -111,7 +111,7 @@ func profile(name, email string) config.Profile {
 	return config.Profile{
 		Name:      name,
 		Email:     email,
-		KeyPath:   "/home/derick/.ssh/id_ed25519_" + name,
+		KeyPath:   "/home/git-persona/.ssh/id_ed25519_" + name,
 		CreatedAt: fixedTime,
 	}
 }
@@ -135,7 +135,7 @@ func TestRootCmd_HasExpectedSubcommands(t *testing.T) {
 func TestAddCmd_PromptsAndPersists(t *testing.T) {
 	home := t.TempDir()
 	k := &fakeKeys{}
-	root, out := newTestCmd(t, home, &fakeGit{}, k, "work\nderick@corp.com\n")
+	root, out := newTestCmd(t, home, &fakeGit{}, k, "work\ngit-persona@corp.com\n")
 	root.SetArgs([]string{"add"})
 
 	if err := root.Execute(); err != nil {
@@ -145,8 +145,8 @@ func TestAddCmd_PromptsAndPersists(t *testing.T) {
 	if len(k.calls) != 1 {
 		t.Fatalf("keygen calls = %d, want 1", len(k.calls))
 	}
-	if k.calls[0].name != "work" || k.calls[0].email != "derick@corp.com" {
-		t.Fatalf("keygen call = %+v, want name=work email=derick@corp.com", k.calls[0])
+	if k.calls[0].name != "work" || k.calls[0].email != "git-persona@corp.com" {
+		t.Fatalf("keygen call = %+v, want name=work email=git-persona@corp.com", k.calls[0])
 	}
 
 	store, err := config.Load(home)
@@ -157,8 +157,8 @@ func TestAddCmd_PromptsAndPersists(t *testing.T) {
 	if !ok {
 		t.Fatal("profile not persisted")
 	}
-	if p.Email != "derick@corp.com" {
-		t.Fatalf("Email = %q, want %q", p.Email, "derick@corp.com")
+	if p.Email != "git-persona@corp.com" {
+		t.Fatalf("Email = %q, want %q", p.Email, "git-persona@corp.com")
 	}
 	if p.KeyPath != ssh.KeyPathFor(home, "work") {
 		t.Fatalf("KeyPath = %q, want %q", p.KeyPath, ssh.KeyPathFor(home, "work"))
@@ -177,7 +177,7 @@ func TestAddCmd_NonInteractiveFlags(t *testing.T) {
 	home := t.TempDir()
 	k := &fakeKeys{}
 	root, _ := newTestCmd(t, home, &fakeGit{}, k, "")
-	root.SetArgs([]string{"add", "--name", "personal", "--email", "derick@gmail.com"})
+	root.SetArgs([]string{"add", "--name", "personal", "--email", "git-persona@gmail.com"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() = %v, want nil", err)
@@ -197,7 +197,7 @@ func TestAddCmd_NonInteractiveFlags(t *testing.T) {
 func TestAddCmd_TrimsCarriageReturns(t *testing.T) {
 	home := t.TempDir()
 	k := &fakeKeys{}
-	root, _ := newTestCmd(t, home, &fakeGit{}, k, "work\r\nderick@corp.com\r\n")
+	root, _ := newTestCmd(t, home, &fakeGit{}, k, "work\r\ngit-persona@corp.com\r\n")
 	root.SetArgs([]string{"add"})
 
 	if err := root.Execute(); err != nil {
@@ -206,14 +206,14 @@ func TestAddCmd_TrimsCarriageReturns(t *testing.T) {
 	if k.calls[0].name != "work" {
 		t.Fatalf("name = %q, want %q", k.calls[0].name, "work")
 	}
-	if k.calls[0].email != "derick@corp.com" {
-		t.Fatalf("email = %q, want %q", k.calls[0].email, "derick@corp.com")
+	if k.calls[0].email != "git-persona@corp.com" {
+		t.Fatalf("email = %q, want %q", k.calls[0].email, "git-persona@corp.com")
 	}
 }
 
 func TestAddCmd_DuplicateName(t *testing.T) {
 	home := t.TempDir()
-	seedStore(t, home, []config.Profile{profile("work", "derick@corp.com")}, "")
+	seedStore(t, home, []config.Profile{profile("work", "git-persona@corp.com")}, "")
 
 	k := &fakeKeys{}
 	root, _ := newTestCmd(t, home, &fakeGit{}, k, "")
@@ -252,7 +252,7 @@ func TestAddCmd_PropagatesKeygenFailure(t *testing.T) {
 	home := t.TempDir()
 	k := &fakeKeys{err: ssh.ErrKeyExists}
 	root, _ := newTestCmd(t, home, &fakeGit{}, k, "")
-	root.SetArgs([]string{"add", "--name", "work", "--email", "derick@corp.com"})
+	root.SetArgs([]string{"add", "--name", "work", "--email", "git-persona@corp.com"})
 
 	if err := root.Execute(); !errors.Is(err, ssh.ErrKeyExists) {
 		t.Fatalf("Execute() error = %v, want ErrKeyExists", err)
@@ -268,11 +268,11 @@ func TestAddCmd_PropagatesKeygenFailure(t *testing.T) {
 // Adding a profile registers it; applying it is what "use" is for.
 func TestAddCmd_DoesNotChangeActiveProfile(t *testing.T) {
 	home := t.TempDir()
-	seedStore(t, home, []config.Profile{profile("work", "derick@corp.com")}, "work")
+	seedStore(t, home, []config.Profile{profile("work", "git-persona@corp.com")}, "work")
 
 	g := &fakeGit{}
 	root, _ := newTestCmd(t, home, g, &fakeKeys{}, "")
-	root.SetArgs([]string{"add", "--name", "personal", "--email", "derick@gmail.com"})
+	root.SetArgs([]string{"add", "--name", "personal", "--email", "git-persona@gmail.com"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() = %v, want nil", err)
@@ -290,8 +290,8 @@ func TestAddCmd_DoesNotChangeActiveProfile(t *testing.T) {
 func TestUseCmd_AppliesProfileAndPersistsActive(t *testing.T) {
 	home := t.TempDir()
 	seedStore(t, home, []config.Profile{
-		profile("work", "derick@corp.com"),
-		profile("personal", "derick@gmail.com"),
+		profile("work", "git-persona@corp.com"),
+		profile("personal", "git-persona@gmail.com"),
 	}, "work")
 
 	g := &fakeGit{}
@@ -305,7 +305,7 @@ func TestUseCmd_AppliesProfileAndPersistsActive(t *testing.T) {
 	if len(g.applied) != 1 {
 		t.Fatalf("git applies = %d, want 1", len(g.applied))
 	}
-	if g.applied[0].Name != "personal" || g.applied[0].Email != "derick@gmail.com" {
+	if g.applied[0].Name != "personal" || g.applied[0].Email != "git-persona@gmail.com" {
 		t.Fatalf("applied = %+v, want the personal profile", g.applied[0])
 	}
 
@@ -317,7 +317,7 @@ func TestUseCmd_AppliesProfileAndPersistsActive(t *testing.T) {
 
 func TestUseCmd_UnknownProfile(t *testing.T) {
 	home := t.TempDir()
-	seedStore(t, home, []config.Profile{profile("work", "derick@corp.com")}, "work")
+	seedStore(t, home, []config.Profile{profile("work", "git-persona@corp.com")}, "work")
 
 	g := &fakeGit{}
 	root, _ := newTestCmd(t, home, g, &fakeKeys{}, "")
@@ -340,8 +340,8 @@ func TestUseCmd_UnknownProfile(t *testing.T) {
 func TestUseCmd_DoesNotPersistWhenApplyFails(t *testing.T) {
 	home := t.TempDir()
 	seedStore(t, home, []config.Profile{
-		profile("work", "derick@corp.com"),
-		profile("personal", "derick@gmail.com"),
+		profile("work", "git-persona@corp.com"),
+		profile("personal", "git-persona@gmail.com"),
 	}, "work")
 
 	g := &fakeGit{err: errors.New("git exploded")}
@@ -370,8 +370,8 @@ func TestUseCmd_RequiresProfileName(t *testing.T) {
 func TestListCmd_MarksActive(t *testing.T) {
 	home := t.TempDir()
 	seedStore(t, home, []config.Profile{
-		profile("work", "derick@corp.com"),
-		profile("personal", "derick@gmail.com"),
+		profile("work", "git-persona@corp.com"),
+		profile("personal", "git-persona@gmail.com"),
 	}, "personal")
 
 	root, out := newTestCmd(t, home, &fakeGit{}, &fakeKeys{}, "")
@@ -382,7 +382,7 @@ func TestListCmd_MarksActive(t *testing.T) {
 	}
 
 	got := out.String()
-	for _, want := range []string{"work", "personal", "derick@corp.com", "derick@gmail.com"} {
+	for _, want := range []string{"work", "personal", "git-persona@corp.com", "git-persona@gmail.com"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q:\n%s", want, got)
 		}
