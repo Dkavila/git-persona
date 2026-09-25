@@ -1,0 +1,19 @@
+# Binaries
+git-persona
+git-persona.exe
+/bin/
+/dist/
+
+# Test & coverage output
+*.out
+coverage.html
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local env
+.env
