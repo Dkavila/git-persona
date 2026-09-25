@@ -35,8 +35,8 @@ func (f *fakeRunner) Run(args ...string) (string, error) {
 func testProfile() config.Profile {
 	return config.Profile{
 		Name:    "work",
-		Email:   "git-persona@corp.com",
-		KeyPath: "/home/git-persona/.ssh/id_ed25519_work",
+		Email:   "dev@acme-corp.com",
+		KeyPath: "/home/user/.ssh/id_ed25519_work",
 	}
 }
 
@@ -50,8 +50,8 @@ func TestApplyProfile_SetsThreeGlobalKeys(t *testing.T) {
 
 	want := [][]string{
 		{"config", "--global", "user.name", "work"},
-		{"config", "--global", "user.email", "git-persona@corp.com"},
-		{"config", "--global", "core.sshCommand", `ssh -i "/home/git-persona/.ssh/id_ed25519_work" -o IdentitiesOnly=yes`},
+		{"config", "--global", "user.email", "dev@acme-corp.com"},
+		{"config", "--global", "core.sshCommand", `ssh -i "/home/user/.ssh/id_ed25519_work" -o IdentitiesOnly=yes`},
 	}
 	if !reflect.DeepEqual(r.calls, want) {
 		t.Fatalf("argv sequence =\n%q\nwant\n%q", r.calls, want)
@@ -94,8 +94,8 @@ func TestApplyProfile_RejectsInvalidProfileBeforeRunning(t *testing.T) {
 }
 
 func TestSSHCommand_Format(t *testing.T) {
-	got := git.SSHCommand("/home/git-persona/.ssh/id_ed25519_work")
-	want := `ssh -i "/home/git-persona/.ssh/id_ed25519_work" -o IdentitiesOnly=yes`
+	got := git.SSHCommand("/home/user/.ssh/id_ed25519_work")
+	want := `ssh -i "/home/user/.ssh/id_ed25519_work" -o IdentitiesOnly=yes`
 
 	if got != want {
 		t.Fatalf("SSHCommand() = %q, want %q", got, want)
@@ -118,8 +118,8 @@ func TestSSHCommand_NormalisesWindowsPath(t *testing.T) {
 // The quotes also cover the common Windows case of a home directory whose name
 // contains a space.
 func TestSSHCommand_QuotesPathWithSpaces(t *testing.T) {
-	got := git.SSHCommand(`C:\Users\git-persona Avila\.ssh\id_ed25519_work`)
-	want := `ssh -i "C:/Users/git-persona Avila/.ssh/id_ed25519_work" -o IdentitiesOnly=yes`
+	got := git.SSHCommand(`C:\Users\Jane Doe\.ssh\id_ed25519_work`)
+	want := `ssh -i "C:/Users/Jane Doe/.ssh/id_ed25519_work" -o IdentitiesOnly=yes`
 
 	if got != want {
 		t.Fatalf("SSHCommand() = %q, want %q", got, want)
@@ -127,7 +127,7 @@ func TestSSHCommand_QuotesPathWithSpaces(t *testing.T) {
 }
 
 func TestCurrentGlobalIdentity(t *testing.T) {
-	r := &fakeRunner{outputs: []string{"work\n", "git-persona@corp.com\n"}}
+	r := &fakeRunner{outputs: []string{"work\n", "dev@acme-corp.com\n"}}
 	c := git.New(r)
 
 	name, email, err := c.CurrentGlobalIdentity()
@@ -137,8 +137,8 @@ func TestCurrentGlobalIdentity(t *testing.T) {
 	if name != "work" {
 		t.Fatalf("name = %q, wanted the trailing newline trimmed to %q", name, "work")
 	}
-	if email != "git-persona@corp.com" {
-		t.Fatalf("email = %q, want %q", email, "git-persona@corp.com")
+	if email != "dev@acme-corp.com" {
+		t.Fatalf("email = %q, want %q", email, "dev@acme-corp.com")
 	}
 
 	want := [][]string{
