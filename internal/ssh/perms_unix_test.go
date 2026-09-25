@@ -18,7 +18,7 @@ func TestGenerate_CreatesSSHDirWithPerms(t *testing.T) {
 	r := &fakeRunner{}
 	m := ssh.New(r, nil)
 
-	if _, err := m.Generate(context.Background(), home, "work", "derick@corp.com"); err != nil {
+	if _, err := m.Generate(context.Background(), home, "work", "git-persona@corp.com"); err != nil {
 		t.Fatalf("Generate() = %v, want nil", err)
 	}
 

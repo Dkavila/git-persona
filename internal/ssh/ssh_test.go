@@ -47,7 +47,7 @@ func TestSlug(t *testing.T) {
 }
 
 func TestKeyPathFor(t *testing.T) {
-	home := filepath.Join("/home", "derick")
+	home := filepath.Join("/home", "git-persona")
 	want := filepath.Join(home, ".ssh", "id_ed25519_work-profile")
 
 	if got := ssh.KeyPathFor(home, "Work Profile"); got != want {
@@ -60,7 +60,7 @@ func TestGenerate_UsesEd25519Args(t *testing.T) {
 	r := &fakeRunner{}
 	m := ssh.New(r, nil)
 
-	keyPath, err := m.Generate(context.Background(), home, "work", "derick@corp.com")
+	keyPath, err := m.Generate(context.Background(), home, "work", "git-persona@corp.com")
 	if err != nil {
 		t.Fatalf("Generate() = %v, want nil", err)
 	}
@@ -72,7 +72,7 @@ func TestGenerate_UsesEd25519Args(t *testing.T) {
 
 	want := [][]string{{
 		"-t", "ed25519",
-		"-C", "derick@corp.com",
+		"-C", "git-persona@corp.com",
 		"-f", wantPath,
 		"-N", "",
 	}}
@@ -97,7 +97,7 @@ func TestGenerate_RefusesOverwrite(t *testing.T) {
 	r := &fakeRunner{}
 	m := ssh.New(r, nil)
 
-	_, err := m.Generate(context.Background(), home, "work", "derick@corp.com")
+	_, err := m.Generate(context.Background(), home, "work", "git-persona@corp.com")
 	if !errors.Is(err, ssh.ErrKeyExists) {
 		t.Fatalf("Generate() error = %v, want ErrKeyExists", err)
 	}
@@ -112,7 +112,7 @@ func TestGenerate_PropagatesKeygenFailure(t *testing.T) {
 	r := &fakeRunner{err: boom}
 	m := ssh.New(r, nil)
 
-	_, err := m.Generate(context.Background(), home, "work", "derick@corp.com")
+	_, err := m.Generate(context.Background(), home, "work", "git-persona@corp.com")
 	if !errors.Is(err, boom) {
 		t.Fatalf("Generate() error = %v, want it to wrap the runner error", err)
 	}
@@ -121,7 +121,7 @@ func TestGenerate_PropagatesKeygenFailure(t *testing.T) {
 func TestPublicKey_ReadsPubFile(t *testing.T) {
 	dir := t.TempDir()
 	keyPath := filepath.Join(dir, "id_ed25519_work")
-	content := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI derick@corp.com"
+	content := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI git-persona@corp.com"
 
 	if err := os.WriteFile(keyPath+".pub", []byte(content+"\n"), 0o644); err != nil {
 		t.Fatalf("setup: %v", err)
@@ -148,13 +148,13 @@ func TestProbeGitHub_Argv(t *testing.T) {
 	r := &fakeRunner{output: "Hi Dkavila! You've successfully authenticated, but GitHub does not provide shell access."}
 	m := ssh.New(nil, r)
 
-	if _, err := m.ProbeGitHub(context.Background(), "/home/derick/.ssh/id_ed25519_work"); err != nil {
+	if _, err := m.ProbeGitHub(context.Background(), "/home/git-persona/.ssh/id_ed25519_work"); err != nil {
 		t.Fatalf("ProbeGitHub() = %v, want nil", err)
 	}
 
 	want := [][]string{{
 		"-T",
-		"-i", "/home/derick/.ssh/id_ed25519_work",
+		"-i", "/home/git-persona/.ssh/id_ed25519_work",
 		"-o", "IdentitiesOnly=yes",
 		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", "BatchMode=yes",
@@ -180,9 +180,9 @@ func TestParseProbeOutput(t *testing.T) {
 		},
 		{
 			name:         "success with surrounding noise",
-			out:          "Warning: Permanently added 'github.com' to the list of known hosts.\nHi derick-work! You've successfully authenticated, but GitHub does not provide shell access.\n",
+			out:          "Warning: Permanently added 'github.com' to the list of known hosts.\nHi git-persona-work! You've successfully authenticated, but GitHub does not provide shell access.\n",
 			wantAuth:     true,
-			wantUsername: "derick-work",
+			wantUsername: "git-persona-work",
 		},
 		{
 			name:         "permission denied",
@@ -227,7 +227,7 @@ func TestProbeGitHub_NonZeroExitIsStillSuccess(t *testing.T) {
 	}
 	m := ssh.New(nil, r)
 
-	auth, err := m.ProbeGitHub(context.Background(), "/home/derick/.ssh/id_ed25519_work")
+	auth, err := m.ProbeGitHub(context.Background(), "/home/git-persona/.ssh/id_ed25519_work")
 	if err != nil {
 		t.Fatalf("ProbeGitHub() = %v, want nil despite the non-zero exit", err)
 	}
@@ -246,7 +246,7 @@ func TestProbeGitHub_PermissionDeniedIsNotAnError(t *testing.T) {
 	}
 	m := ssh.New(nil, r)
 
-	auth, err := m.ProbeGitHub(context.Background(), "/home/derick/.ssh/id_ed25519_work")
+	auth, err := m.ProbeGitHub(context.Background(), "/home/git-persona/.ssh/id_ed25519_work")
 	if err != nil {
 		t.Fatalf("ProbeGitHub() = %v, want nil (a rejected key is a verdict, not a crash)", err)
 	}
@@ -262,7 +262,7 @@ func TestProbeGitHub_UnrecognisedOutputPropagatesError(t *testing.T) {
 	r := &fakeRunner{output: "", err: boom}
 	m := ssh.New(nil, r)
 
-	if _, err := m.ProbeGitHub(context.Background(), "/home/derick/.ssh/id_ed25519_work"); !errors.Is(err, boom) {
+	if _, err := m.ProbeGitHub(context.Background(), "/home/git-persona/.ssh/id_ed25519_work"); !errors.Is(err, boom) {
 		t.Fatalf("ProbeGitHub() error = %v, want it to wrap the runner error", err)
 	}
 }
@@ -274,7 +274,7 @@ func TestProbeGitHub_RespectsContextCancellation(t *testing.T) {
 	r := &fakeRunner{output: "", err: context.Canceled}
 	m := ssh.New(nil, r)
 
-	if _, err := m.ProbeGitHub(ctx, "/home/derick/.ssh/id_ed25519_work"); !errors.Is(err, context.Canceled) {
+	if _, err := m.ProbeGitHub(ctx, "/home/git-persona/.ssh/id_ed25519_work"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("ProbeGitHub() error = %v, want context.Canceled", err)
 	}
 }
