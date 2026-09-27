@@ -19,6 +19,7 @@ func NewRootCmd(d Deps) *cobra.Command {
 		newUseCmd(d),
 		newListCmd(d),
 		newCleanCmd(d),
+		newRemoveCmd(d),
 	)
 	return root
 }

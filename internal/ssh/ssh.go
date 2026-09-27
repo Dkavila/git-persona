@@ -167,3 +167,18 @@ func ParseProbeOutput(out string) (bool, string) {
 func isDenied(out string) bool {
 	return strings.Contains(out, "Permission denied")
 }
+
+// RemoveKeyPair deletes both halves of a key pair. Files that are already gone
+// are ignored, so purging a profile whose key was deleted by hand still
+// succeeds rather than blocking the removal.
+//
+// This is irreversible: there is no recycle bin on this path, and a key
+// registered with a provider cannot be recovered.
+func RemoveKeyPair(keyPath string) error {
+	for _, path := range []string{keyPath, keyPath + ".pub"} {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove %s: %w", path, err)
+		}
+	}
+	return nil
+}

@@ -14,6 +14,7 @@ import (
 type GitClient interface {
 	ApplyProfile(p config.Profile) error
 	CleanLocal(path string) error
+	UnsetGlobal() error
 }
 
 // KeyManager is the slice of the ssh layer the CLI needs.

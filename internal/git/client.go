@@ -104,6 +104,24 @@ func (c *Client) globalGet(key string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// UnsetGlobal removes the three identity keys from the global configuration,
+// leaving Git with no persona at all. It is the counterpart to ApplyProfile,
+// used when the active profile is deleted.
+//
+// As with CleanLocal, a key that is already absent (exit code 5) is not an
+// error and does not stop the remaining keys from being cleared.
+func (c *Client) UnsetGlobal() error {
+	for _, key := range identityKeys {
+		if _, err := c.r.Run("config", "--global", "--unset", key); err != nil {
+			if exitCode(err) == exitUnsetNoKey {
+				continue
+			}
+			return fmt.Errorf("unset global %s: %w", key, err)
+		}
+	}
+	return nil
+}
+
 // CleanLocal removes the three identity keys from a repository's local
 // configuration so the global persona takes effect again. An empty path means
 // the current directory.
