@@ -278,3 +278,52 @@ func TestProbeGitHub_RespectsContextCancellation(t *testing.T) {
 		t.Fatalf("ProbeGitHub() error = %v, want context.Canceled", err)
 	}
 }
+
+func TestRemoveKeyPair_DeletesBothFiles(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "id_ed25519_work")
+
+	if err := os.WriteFile(keyPath, []byte("PRIVATE"), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("PUBLIC"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	if err := ssh.RemoveKeyPair(keyPath); err != nil {
+		t.Fatalf("RemoveKeyPair() = %v, want nil", err)
+	}
+
+	for _, p := range []string{keyPath, keyPath + ".pub"} {
+		if _, err := os.Stat(p); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s still exists after RemoveKeyPair()", p)
+		}
+	}
+}
+
+// Idempotent on purpose: purging a profile whose key was already deleted by
+// hand must succeed rather than block the profile removal.
+func TestRemoveKeyPair_MissingFilesAreNotAnError(t *testing.T) {
+	keyPath := filepath.Join(t.TempDir(), "id_ed25519_ghost")
+
+	if err := ssh.RemoveKeyPair(keyPath); err != nil {
+		t.Fatalf("RemoveKeyPair() = %v, want nil for absent files", err)
+	}
+}
+
+// Half a key pair is still worth cleaning up.
+func TestRemoveKeyPair_RemovesPrivateWhenPublicIsMissing(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "id_ed25519_work")
+
+	if err := os.WriteFile(keyPath, []byte("PRIVATE"), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	if err := ssh.RemoveKeyPair(keyPath); err != nil {
+		t.Fatalf("RemoveKeyPair() = %v, want nil", err)
+	}
+	if _, err := os.Stat(keyPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("private key still exists after RemoveKeyPair()")
+	}
+}

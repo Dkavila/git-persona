@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -20,9 +21,16 @@ var fixedTime = time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 
 // fakeGit records what the CLI asked the git layer to do.
 type fakeGit struct {
-	applied []config.Profile
-	cleaned []string
-	err     error
+	applied  []config.Profile
+	cleaned  []string
+	unset    int
+	err      error
+	unsetErr error
+}
+
+func (f *fakeGit) UnsetGlobal() error {
+	f.unset++
+	return f.unsetErr
 }
 
 func (f *fakeGit) ApplyProfile(p config.Profile) error {
@@ -125,7 +133,7 @@ func TestRootCmd_HasExpectedSubcommands(t *testing.T) {
 	}
 
 	// verify is registered in Phase 5 and is deliberately absent here.
-	for _, name := range []string{"add", "use", "list", "clean"} {
+	for _, name := range []string{"add", "use", "list", "clean", "remove"} {
 		if !got[name] {
 			t.Errorf("subcommand %q not registered", name)
 		}
@@ -449,5 +457,216 @@ func TestCleanCmd_PropagatesError(t *testing.T) {
 
 	if err := root.Execute(); err == nil {
 		t.Fatal("Execute() = nil, want error")
+	}
+}
+
+// --- remove -----------------------------------------------------------------
+
+// seedKeyPair writes a key pair on disk and returns a profile pointing at it,
+// so the purge path has something real to delete.
+func seedKeyPair(t *testing.T, home, name, email string) config.Profile {
+	t.Helper()
+
+	keyPath := ssh.KeyPathFor(home, name)
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("PRIVATE"), 0o600); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("PUBLIC"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	return config.Profile{Name: name, Email: email, KeyPath: keyPath, CreatedAt: fixedTime}
+}
+
+// The default is deliberately conservative: the key may already be registered
+// with a provider, and deleting it is irreversible.
+func TestRemoveCmd_KeepsKeyByDefault(t *testing.T) {
+	home := t.TempDir()
+	p := seedKeyPair(t, home, "work", "dev@acme-corp.com")
+	seedStore(t, home, []config.Profile{p}, "")
+
+	g := &fakeGit{}
+	root, out := newTestCmd(t, home, g, &fakeKeys{}, "")
+	root.SetArgs([]string{"remove", "work"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+
+	store, _ := config.Load(home)
+	if _, ok := store.Get("work"); ok {
+		t.Fatal("profile still present after remove")
+	}
+
+	for _, path := range []string{p.KeyPath, p.KeyPath + ".pub"} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("key file %s was deleted without --purge-key: %v", path, err)
+		}
+	}
+
+	// The user must be told the key survived, or they will assume it is gone.
+	if !strings.Contains(out.String(), p.KeyPath) {
+		t.Errorf("output does not mention the retained key path:\n%s", out.String())
+	}
+}
+
+func TestRemoveCmd_PurgeKeyDeletesBothFiles(t *testing.T) {
+	home := t.TempDir()
+	p := seedKeyPair(t, home, "work", "dev@acme-corp.com")
+	seedStore(t, home, []config.Profile{p}, "")
+
+	root, _ := newTestCmd(t, home, &fakeGit{}, &fakeKeys{}, "")
+	root.SetArgs([]string{"remove", "work", "--purge-key"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+
+	for _, path := range []string{p.KeyPath, p.KeyPath + ".pub"} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("key file %s survived --purge-key", path)
+		}
+	}
+
+	store, _ := config.Load(home)
+	if len(store.Profiles) != 0 {
+		t.Fatalf("len(Profiles) = %d, want 0", len(store.Profiles))
+	}
+}
+
+// Removing the active profile leaves the global config pointing at an identity
+// that no longer exists, and at a key that may have just been deleted. The
+// three keys must be unset so git falls back to a clean state.
+func TestRemoveCmd_ActiveProfileUnsetsGlobalConfig(t *testing.T) {
+	home := t.TempDir()
+	p := seedKeyPair(t, home, "work", "dev@acme-corp.com")
+	seedStore(t, home, []config.Profile{p}, "work")
+
+	g := &fakeGit{}
+	root, out := newTestCmd(t, home, g, &fakeKeys{}, "")
+	root.SetArgs([]string{"remove", "work"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+
+	if g.unset != 1 {
+		t.Fatalf("UnsetGlobal calls = %d, want 1", g.unset)
+	}
+
+	store, _ := config.Load(home)
+	if store.Active != "" {
+		t.Fatalf("Active = %q, want empty", store.Active)
+	}
+
+	got := strings.ToLower(out.String())
+	if !strings.Contains(got, "warning") {
+		t.Errorf("output carries no warning about the cleared global identity:\n%s", out.String())
+	}
+}
+
+func TestRemoveCmd_InactiveProfileLeavesGlobalConfigAlone(t *testing.T) {
+	home := t.TempDir()
+	work := seedKeyPair(t, home, "work", "dev@acme-corp.com")
+	personal := seedKeyPair(t, home, "personal", "me@example.com")
+	seedStore(t, home, []config.Profile{work, personal}, "work")
+
+	g := &fakeGit{}
+	root, _ := newTestCmd(t, home, g, &fakeKeys{}, "")
+	root.SetArgs([]string{"remove", "personal"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+
+	if g.unset != 0 {
+		t.Fatalf("UnsetGlobal calls = %d, want 0 for an inactive profile", g.unset)
+	}
+
+	store, _ := config.Load(home)
+	if store.Active != "work" {
+		t.Fatalf("Active = %q, want it unchanged at %q", store.Active, "work")
+	}
+}
+
+// If the global config cannot be cleared, removing the profile anyway would
+// strand git pointing at an identity with no record. Abort instead.
+func TestRemoveCmd_DoesNotRemoveWhenUnsetFails(t *testing.T) {
+	home := t.TempDir()
+	p := seedKeyPair(t, home, "work", "dev@acme-corp.com")
+	seedStore(t, home, []config.Profile{p}, "work")
+
+	g := &fakeGit{unsetErr: errors.New("git exploded")}
+	root, _ := newTestCmd(t, home, g, &fakeKeys{}, "")
+	root.SetArgs([]string{"remove", "work"})
+
+	if err := root.Execute(); err == nil {
+		t.Fatal("Execute() = nil, want error")
+	}
+
+	store, _ := config.Load(home)
+	if _, ok := store.Get("work"); !ok {
+		t.Fatal("profile was removed even though the global unset failed")
+	}
+	if _, err := os.Stat(p.KeyPath); err != nil {
+		t.Fatalf("key was touched despite the failure: %v", err)
+	}
+}
+
+func TestRemoveCmd_UnknownProfile(t *testing.T) {
+	home := t.TempDir()
+	p := seedKeyPair(t, home, "work", "dev@acme-corp.com")
+	seedStore(t, home, []config.Profile{p}, "work")
+
+	g := &fakeGit{}
+	root, _ := newTestCmd(t, home, g, &fakeKeys{}, "")
+	root.SetArgs([]string{"remove", "ghost"})
+
+	if err := root.Execute(); !errors.Is(err, config.ErrProfileNotFound) {
+		t.Fatalf("Execute() error = %v, want ErrProfileNotFound", err)
+	}
+	if g.unset != 0 {
+		t.Fatalf("UnsetGlobal calls = %d, want 0", g.unset)
+	}
+
+	store, _ := config.Load(home)
+	if len(store.Profiles) != 1 {
+		t.Fatalf("len(Profiles) = %d, want 1", len(store.Profiles))
+	}
+}
+
+func TestRemoveCmd_RequiresProfileName(t *testing.T) {
+	root, _ := newTestCmd(t, t.TempDir(), &fakeGit{}, &fakeKeys{}, "")
+	root.SetArgs([]string{"remove"})
+
+	if err := root.Execute(); err == nil {
+		t.Fatal("Execute() = nil, want an argument error")
+	}
+}
+
+// Purging a profile whose key was already deleted by hand must still succeed.
+func TestRemoveCmd_PurgeKeyToleratesMissingFiles(t *testing.T) {
+	home := t.TempDir()
+	p := config.Profile{
+		Name:      "work",
+		Email:     "dev@acme-corp.com",
+		KeyPath:   ssh.KeyPathFor(home, "work"),
+		CreatedAt: fixedTime,
+	}
+	seedStore(t, home, []config.Profile{p}, "")
+
+	root, _ := newTestCmd(t, home, &fakeGit{}, &fakeKeys{}, "")
+	root.SetArgs([]string{"remove", "work", "--purge-key"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+
+	store, _ := config.Load(home)
+	if len(store.Profiles) != 0 {
+		t.Fatalf("len(Profiles) = %d, want 0", len(store.Profiles))
 	}
 }

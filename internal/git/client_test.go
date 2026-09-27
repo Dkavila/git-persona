@@ -248,3 +248,62 @@ func TestCleanLocal_RealErrorPropagates(t *testing.T) {
 		t.Fatalf("len(calls) = %d, want 1 (a real failure must abort the sweep)", len(r.calls))
 	}
 }
+
+// UnsetGlobal is the counterpart to ApplyProfile: it strips the identity from
+// the global config, which is what "remove" needs when it deletes the profile
+// that is currently in use.
+func TestUnsetGlobal_UnsetsThreeKeys(t *testing.T) {
+	r := &fakeRunner{}
+	c := git.New(r)
+
+	if err := c.UnsetGlobal(); err != nil {
+		t.Fatalf("UnsetGlobal() = %v, want nil", err)
+	}
+
+	want := [][]string{
+		{"config", "--global", "--unset", "user.name"},
+		{"config", "--global", "--unset", "user.email"},
+		{"config", "--global", "--unset", "core.sshCommand"},
+	}
+	if !reflect.DeepEqual(r.calls, want) {
+		t.Fatalf("argv sequence =\n%q\nwant\n%q", r.calls, want)
+	}
+}
+
+// Same exit-code-5 rule as CleanLocal: a key that is already absent is not a
+// failure, and must not stop the remaining keys from being cleared.
+func TestUnsetGlobal_IgnoresMissingKeyExit5(t *testing.T) {
+	r := &fakeRunner{errs: []error{
+		&git.ExitError{Code: 5},
+		nil,
+		&git.ExitError{Code: 5},
+	}}
+	c := git.New(r)
+
+	if err := c.UnsetGlobal(); err != nil {
+		t.Fatalf("UnsetGlobal() = %v, want nil when keys are absent", err)
+	}
+	if len(r.calls) != 3 {
+		t.Fatalf("len(calls) = %d, want 3", len(r.calls))
+	}
+}
+
+func TestUnsetGlobal_RealErrorPropagates(t *testing.T) {
+	r := &fakeRunner{errs: []error{
+		&git.ExitError{Code: 128, Stderr: "fatal: unable to read config file"},
+	}}
+	c := git.New(r)
+
+	err := c.UnsetGlobal()
+	if err == nil {
+		t.Fatal("UnsetGlobal() = nil, want error for exit code 128")
+	}
+
+	var exitErr *git.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 128 {
+		t.Fatalf("UnsetGlobal() error = %v, want it to wrap *git.ExitError with code 128", err)
+	}
+	if len(r.calls) != 1 {
+		t.Fatalf("len(calls) = %d, want 1 (a real failure must abort the sweep)", len(r.calls))
+	}
+}
