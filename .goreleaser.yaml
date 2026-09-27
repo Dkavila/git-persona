@@ -1,0 +1,115 @@
+# GoReleaser configuration for git-persona.
+#
+# Local sanity check (no publishing, no tag required):
+#   goreleaser check
+#   goreleaser release --snapshot --clean
+#
+# Released for real by .github/workflows/release.yml on a v* tag.
+version: 2
+
+project_name: git-persona
+
+before:
+  hooks:
+    # download, not tidy: tidy can rewrite go.mod mid-release, which would make
+    # the published artifacts disagree with the tagged commit.
+    - go mod download
+
+builds:
+  - id: git-persona
+    main: ./cmd/git-persona
+    binary: git-persona
+
+    env:
+      # Static binaries. Nothing here needs cgo, and disabling it is what makes
+      # cross-compiling every target from a single Windows runner work.
+      - CGO_ENABLED=0
+
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+    ldflags:
+      # -s -w strip the symbol table and DWARF data.
+      # main.version is the variable declared in cmd/git-persona/main.go.
+      - -s -w -X main.version={{ .Version }}
+
+    # Reproducible builds: stamp binaries with the commit time rather than the
+    # build time, so rebuilding the same tag yields the same bytes.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    # tar.gz everywhere except Windows, which gets a zip.
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^test:"
+      - "^test\\("
+      - "^docs:"
+      - "^chore:"
+      - "^ci:"
+      - "merge conflict"
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+
+release:
+  draft: false
+  prerelease: auto
+  # The Inno Setup installer is uploaded by the workflow after this release is
+  # created, because it can only be built once the Windows binary exists.
+  footer: |
+    ---
+
+    **Windows users:** `GitPersona_Installer.exe` below is a classic GUI
+    installer. It adds the install directory to your user PATH and provides the
+    short `gitp` alias. The `.zip` archive is the portable alternative.
+
+# Package managers.
+#
+# Both require a separate tap repository and a token with write access to it,
+# so they stay commented out until those exist. Uncomment once you have created
+# github.com/Dkavila/scoop-bucket or github.com/Dkavila/homebrew-tap and added
+# a TAP_GITHUB_TOKEN secret.
+#
+# scoops:
+#   - repository:
+#       owner: Dkavila
+#       name: scoop-bucket
+#       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+#     homepage: https://github.com/Dkavila/git-persona
+#     description: Manage and switch between multiple Git and SSH identities
+#     license: MIT
+#
+# brews:
+#   - repository:
+#       owner: Dkavila
+#       name: homebrew-tap
+#       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+#     homepage: https://github.com/Dkavila/git-persona
+#     description: Manage and switch between multiple Git and SSH identities
+#     license: MIT
+#     test: |
+#       system "#{bin}/git-persona", "--version"

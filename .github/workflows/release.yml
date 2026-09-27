@@ -1,0 +1,111 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # GoReleaser needs full history and all tags for the changelog and
+          # version resolution. A shallow clone breaks it.
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        # Fail before publishing anything, not after.
+        run: go test ./...
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Stage the Windows binary for Inno Setup
+        shell: pwsh
+        run: |
+          # GoReleaser writes each build to a directory encoding the target,
+          # e.g. dist\git-persona_windows_amd64_v1\git-persona.exe. That _v1
+          # suffix comes from GOAMD64 and can change, so discover the path.
+          $binary = Get-ChildItem -Path dist -Recurse -Filter 'git-persona.exe' |
+                    Where-Object { $_.DirectoryName -match 'windows_amd64' } |
+                    Select-Object -First 1
+
+          if (-not $binary) {
+            Get-ChildItem -Path dist -Recurse | Select-Object FullName | Format-Table -AutoSize
+            throw 'Could not find the windows/amd64 binary in dist. Layout dumped above.'
+          }
+
+          $stage = Join-Path $PWD 'dist\installer-input'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item $binary.FullName -Destination $stage -Force
+
+          "INNO_BINARY_DIR=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Locate the Inno Setup compiler
+        shell: pwsh
+        run: |
+          # Inno Setup ships with the windows-latest image, but the docs do not
+          # promise ISCC.exe is on PATH, so fall back to known locations.
+          $iscc = (Get-Command iscc.exe -ErrorAction SilentlyContinue)?.Source
+
+          if (-not $iscc) {
+            $candidates = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+            )
+            $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+
+          if (-not $iscc) { throw 'ISCC.exe not found on this runner image.' }
+
+          "ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build the Inno Setup installer
+        shell: pwsh
+        run: |
+          # Strip the leading "v": Inno's AppVersion expects a bare version.
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          $output  = Join-Path $PWD 'dist\installer'
+
+          & "$env:ISCC" `
+            "/DBinaryDir=$env:INNO_BINARY_DIR" `
+            "/DAppVersion=$version" `
+            "/DOutputDir=$output" `
+            "/DOutputBaseFilename=GitPersona_Installer" `
+            "build\windows\installer.iss"
+
+          if ($LASTEXITCODE -ne 0) { throw "iscc failed with exit code $LASTEXITCODE" }
+
+      - name: Attach the installer to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" `
+            "dist\installer\GitPersona_Installer.exe" --clobber
+
+      - name: Upload build artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-debug
+          path: dist
+          retention-days: 5
