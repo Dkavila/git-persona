@@ -48,13 +48,23 @@ type keygenCall struct{ home, name, email string }
 // fakeKeys stands in for the ssh layer and writes real key files, so the CLI's
 // "here is your public key" output can be asserted end to end.
 type fakeKeys struct {
-	calls []keygenCall
-	err   error
-	pub   string
+	calls      []keygenCall
+	overwrites []keygenCall
+	err        error
+	pub        string
 }
 
-func (f *fakeKeys) Generate(_ context.Context, home, name, email string) (string, error) {
+func (f *fakeKeys) Overwrite(ctx context.Context, home, name, email string) (string, error) {
+	f.overwrites = append(f.overwrites, keygenCall{home, name, email})
+	return f.write(home, name, email)
+}
+
+func (f *fakeKeys) Generate(ctx context.Context, home, name, email string) (string, error) {
 	f.calls = append(f.calls, keygenCall{home, name, email})
+	return f.write(home, name, email)
+}
+
+func (f *fakeKeys) write(home, name, email string) (string, error) {
 	if f.err != nil {
 		return "", f.err
 	}
@@ -669,4 +679,262 @@ func TestRemoveCmd_PurgeKeyToleratesMissingFiles(t *testing.T) {
 	if len(store.Profiles) != 0 {
 		t.Fatalf("len(Profiles) = %d, want 0", len(store.Profiles))
 	}
+}
+
+// --- add: interactive key recovery -------------------------------------------
+
+// recoveryPrompt is asserted verbatim, because it is the contract the user
+// reads and types against.
+const recoveryPrompt = "An SSH key for this profile already exists. " +
+	"Do you want to (R)ecover the existing key or (O)verwrite it with a new one? [R/o]: "
+
+// seedOrphanKey writes a key pair with no matching profile, which is the state
+// that triggers the recovery flow: a key left behind by a removed profile, or
+// carried over from another machine.
+func seedOrphanKey(t *testing.T, home, name, pub string) string {
+	t.Helper()
+
+	keyPath := ssh.KeyPathFor(home, name)
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("EXISTING PRIVATE"), 0o600); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if pub != "" {
+		if err := os.WriteFile(keyPath+".pub", []byte(pub+"\n"), 0o644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	return keyPath
+}
+
+func TestAddCmd_ExistingKeyRecovers(t *testing.T) {
+	home := t.TempDir()
+	pub := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEXISTING dev@acme-corp.com"
+	keyPath := seedOrphanKey(t, home, "work", pub)
+
+	k := &fakeKeys{}
+	root, out := newTestCmd(t, home, &fakeGit{}, k, "R\n")
+	root.SetArgs([]string{"add", "--name", "work", "--email", "dev@acme-corp.com"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+
+	if len(k.calls) != 0 {
+		t.Fatalf("Generate calls = %d, want 0 on the recover path", len(k.calls))
+	}
+	if len(k.overwrites) != 0 {
+		t.Fatalf("Overwrite calls = %d, want 0 on the recover path", len(k.overwrites))
+	}
+
+	store, _ := config.Load(home)
+	p, ok := store.Get("work")
+	if !ok {
+		t.Fatal("profile was not registered")
+	}
+	if p.KeyPath != keyPath {
+		t.Fatalf("KeyPath = %q, want the existing key %q", p.KeyPath, keyPath)
+	}
+
+	// The private key must survive untouched.
+	raw, err := os.ReadFile(keyPath)
+	if err != nil || string(raw) != "EXISTING PRIVATE" {
+		t.Fatalf("existing private key was modified: %q, %v", raw, err)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, pub) {
+		t.Errorf("output does not show the existing public key for inspection:\n%s", got)
+	}
+	if !strings.Contains(got, recoveryPrompt) {
+		t.Errorf("output does not contain the recovery prompt verbatim:\n%s", got)
+	}
+}
+
+func TestAddCmd_ExistingKeyOverwrites(t *testing.T) {
+	home := t.TempDir()
+	keyPath := seedOrphanKey(t, home, "work", "ssh-ed25519 AAAAOLD old@example.com")
+
+	k := &fakeKeys{}
+	root, _ := newTestCmd(t, home, &fakeGit{}, k, "O\n")
+	root.SetArgs([]string{"add", "--name", "work", "--email", "dev@acme-corp.com"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+
+	if len(k.overwrites) != 1 {
+		t.Fatalf("Overwrite calls = %d, want 1", len(k.overwrites))
+	}
+	if k.overwrites[0].name != "work" || k.overwrites[0].email != "dev@acme-corp.com" {
+		t.Fatalf("Overwrite call = %+v, want name=work email=dev@acme-corp.com", k.overwrites[0])
+	}
+	// Generate refuses to clobber, so the overwrite path must not go through it.
+	if len(k.calls) != 0 {
+		t.Fatalf("Generate calls = %d, want 0 on the overwrite path", len(k.calls))
+	}
+
+	store, _ := config.Load(home)
+	p, ok := store.Get("work")
+	if !ok {
+		t.Fatal("profile was not registered")
+	}
+	if p.KeyPath != keyPath {
+		t.Fatalf("KeyPath = %q, want %q", p.KeyPath, keyPath)
+	}
+}
+
+// The user can only make an informed choice if the key is shown before the
+// question, not after.
+func TestAddCmd_ExistingKeyShowsPublicKeyBeforePrompting(t *testing.T) {
+	home := t.TempDir()
+	pub := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEXISTING dev@acme-corp.com"
+	seedOrphanKey(t, home, "work", pub)
+
+	root, out := newTestCmd(t, home, &fakeGit{}, &fakeKeys{}, "R\n")
+	root.SetArgs([]string{"add", "--name", "work", "--email", "dev@acme-corp.com"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+
+	got := out.String()
+	keyAt := strings.Index(got, pub)
+	promptAt := strings.Index(got, recoveryPrompt)
+
+	if keyAt < 0 || promptAt < 0 {
+		t.Fatalf("missing key (%d) or prompt (%d) in output:\n%s", keyAt, promptAt, got)
+	}
+	if keyAt > promptAt {
+		t.Fatalf("the public key is printed after the prompt:\n%s", got)
+	}
+}
+
+// Capital R marks the default, and the default must be the non-destructive
+// one, so a scripted run with no answer cannot silently destroy a key.
+func TestAddCmd_ExistingKeyEmptyAnswerRecovers(t *testing.T) {
+	home := t.TempDir()
+	seedOrphanKey(t, home, "work", "ssh-ed25519 AAAAEXISTING dev@acme-corp.com")
+
+	k := &fakeKeys{}
+	root, _ := newTestCmd(t, home, &fakeGit{}, k, "\n")
+	root.SetArgs([]string{"add", "--name", "work", "--email", "dev@acme-corp.com"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+	if len(k.overwrites) != 0 {
+		t.Fatalf("Overwrite calls = %d, want 0 for an empty answer", len(k.overwrites))
+	}
+	if _, ok := mustLoad(t, home).Get("work"); !ok {
+		t.Fatal("profile was not registered")
+	}
+}
+
+// End of input (a piped or non-interactive run) must also take the safe path.
+func TestAddCmd_ExistingKeyEOFRecovers(t *testing.T) {
+	home := t.TempDir()
+	seedOrphanKey(t, home, "work", "ssh-ed25519 AAAAEXISTING dev@acme-corp.com")
+
+	k := &fakeKeys{}
+	root, _ := newTestCmd(t, home, &fakeGit{}, k, "")
+	root.SetArgs([]string{"add", "--name", "work", "--email", "dev@acme-corp.com"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+	if len(k.overwrites) != 0 || len(k.calls) != 0 {
+		t.Fatalf("keys were regenerated on EOF: generate=%d overwrite=%d", len(k.calls), len(k.overwrites))
+	}
+	if _, ok := mustLoad(t, home).Get("work"); !ok {
+		t.Fatal("profile was not registered")
+	}
+}
+
+func TestAddCmd_ExistingKeyRepromptsOnInvalidAnswer(t *testing.T) {
+	home := t.TempDir()
+	seedOrphanKey(t, home, "work", "ssh-ed25519 AAAAEXISTING dev@acme-corp.com")
+
+	k := &fakeKeys{}
+	root, out := newTestCmd(t, home, &fakeGit{}, k, "maybe\nO\n")
+	root.SetArgs([]string{"add", "--name", "work", "--email", "dev@acme-corp.com"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+	if len(k.overwrites) != 1 {
+		t.Fatalf("Overwrite calls = %d, want 1 after the corrected answer", len(k.overwrites))
+	}
+	if n := strings.Count(out.String(), recoveryPrompt); n != 2 {
+		t.Fatalf("prompt shown %d times, want 2 (once rejected, once accepted)", n)
+	}
+}
+
+// A private key with no readable .pub still has to be decided on, so the flow
+// must degrade instead of skipping the question.
+func TestAddCmd_ExistingKeyWithoutPubStillPrompts(t *testing.T) {
+	home := t.TempDir()
+	seedOrphanKey(t, home, "work", "")
+
+	k := &fakeKeys{}
+	root, out := newTestCmd(t, home, &fakeGit{}, k, "R\n")
+	root.SetArgs([]string{"add", "--name", "work", "--email", "dev@acme-corp.com"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+	if !strings.Contains(out.String(), recoveryPrompt) {
+		t.Fatalf("output does not contain the recovery prompt:\n%s", out.String())
+	}
+	if len(k.overwrites) != 0 {
+		t.Fatalf("Overwrite calls = %d, want 0", len(k.overwrites))
+	}
+}
+
+// The prompt must never appear when there is nothing to recover.
+func TestAddCmd_NoExistingKeyDoesNotPrompt(t *testing.T) {
+	home := t.TempDir()
+
+	k := &fakeKeys{}
+	root, out := newTestCmd(t, home, &fakeGit{}, k, "")
+	root.SetArgs([]string{"add", "--name", "work", "--email", "dev@acme-corp.com"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+	if strings.Contains(out.String(), recoveryPrompt) {
+		t.Fatalf("recovery prompt shown with no existing key:\n%s", out.String())
+	}
+	if len(k.calls) != 1 {
+		t.Fatalf("Generate calls = %d, want 1", len(k.calls))
+	}
+}
+
+// The prompt reads from the same stream as the name and email prompts, so a
+// single fully interactive session must work end to end.
+func TestAddCmd_InteractiveSessionReachesRecoveryPrompt(t *testing.T) {
+	home := t.TempDir()
+	seedOrphanKey(t, home, "work", "ssh-ed25519 AAAAEXISTING dev@acme-corp.com")
+
+	k := &fakeKeys{}
+	root, out := newTestCmd(t, home, &fakeGit{}, k, "work\ndev@acme-corp.com\nO\n")
+	root.SetArgs([]string{"add"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+	if len(k.overwrites) != 1 {
+		t.Fatalf("Overwrite calls = %d, want 1; output:\n%s", len(k.overwrites), out.String())
+	}
+}
+
+func mustLoad(t *testing.T, home string) *config.Store {
+	t.Helper()
+	store, err := config.Load(home)
+	if err != nil {
+		t.Fatalf("Load() = %v", err)
+	}
+	return store
 }

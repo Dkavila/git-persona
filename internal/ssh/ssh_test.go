@@ -327,3 +327,89 @@ func TestRemoveKeyPair_RemovesPrivateWhenPublicIsMissing(t *testing.T) {
 		t.Fatal("private key still exists after RemoveKeyPair()")
 	}
 }
+
+func TestKeyExists(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "id_ed25519_work")
+
+	t.Run("absent", func(t *testing.T) {
+		got, err := ssh.KeyExists(keyPath)
+		if err != nil {
+			t.Fatalf("KeyExists() = %v, want nil", err)
+		}
+		if got {
+			t.Fatal("KeyExists() = true, want false")
+		}
+	})
+
+	t.Run("present", func(t *testing.T) {
+		if err := os.WriteFile(keyPath, []byte("PRIVATE"), 0o600); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+		got, err := ssh.KeyExists(keyPath)
+		if err != nil {
+			t.Fatalf("KeyExists() = %v, want nil", err)
+		}
+		if !got {
+			t.Fatal("KeyExists() = false, want true")
+		}
+	})
+}
+
+// Overwrite is the deliberate counterpart to Generate: it removes the existing
+// pair first, so the refusal built into Generate does not block a user who has
+// explicitly asked to replace the key.
+func TestOverwrite_ReplacesAnExistingKey(t *testing.T) {
+	home := t.TempDir()
+	keyPath := ssh.KeyPathFor(home, "work")
+
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("OLD PRIVATE"), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("OLD PUBLIC"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	r := &fakeRunner{}
+	m := ssh.New(r, nil)
+
+	got, err := m.Overwrite(context.Background(), home, "work", "dev@acme-corp.com")
+	if err != nil {
+		t.Fatalf("Overwrite() = %v, want nil", err)
+	}
+	if got != keyPath {
+		t.Fatalf("keyPath = %q, want %q", got, keyPath)
+	}
+
+	want := [][]string{{
+		"-t", "ed25519",
+		"-C", "dev@acme-corp.com",
+		"-f", keyPath,
+		"-N", "",
+	}}
+	if !reflect.DeepEqual(r.calls, want) {
+		t.Fatalf("argv =\n%q\nwant\n%q", r.calls, want)
+	}
+
+	// The stale files must be gone before ssh-keygen runs, otherwise keygen
+	// itself would prompt for confirmation and hang.
+	if _, err := os.Stat(keyPath + ".pub"); !errors.Is(err, os.ErrNotExist) {
+		t.Error("the old public key survived Overwrite()")
+	}
+}
+
+func TestOverwrite_WorksWhenNoKeyExists(t *testing.T) {
+	home := t.TempDir()
+	r := &fakeRunner{}
+	m := ssh.New(r, nil)
+
+	if _, err := m.Overwrite(context.Background(), home, "work", "dev@acme-corp.com"); err != nil {
+		t.Fatalf("Overwrite() = %v, want nil", err)
+	}
+	if len(r.calls) != 1 {
+		t.Fatalf("keygen calls = %d, want 1", len(r.calls))
+	}
+}
