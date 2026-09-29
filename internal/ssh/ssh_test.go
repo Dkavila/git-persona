@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Dkavila/git-persona/internal/ssh"
@@ -412,4 +413,184 @@ func TestOverwrite_WorksWhenNoKeyExists(t *testing.T) {
 	if len(r.calls) != 1 {
 		t.Fatalf("keygen calls = %d, want 1", len(r.calls))
 	}
+}
+
+// --- Overwrite crash safety ---------------------------------------------------
+
+// The old pair must survive a failed regeneration. Removing it before running
+// ssh-keygen leaves the user with nothing at all when keygen fails: the old key
+// is gone and the new one was never written. The old key may be registered
+// with a provider, so losing it locks the account out.
+func TestOverwrite_RestoresTheOldKeyWhenKeygenFails(t *testing.T) {
+	home := t.TempDir()
+	keyPath := ssh.KeyPathFor(home, "work")
+
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("ORIGINAL PRIVATE"), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ORIGINAL PUBLIC"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	boom := errors.New("ssh-keygen: no space left on device")
+	m := ssh.New(&fakeRunner{err: boom}, nil)
+
+	_, err := m.Overwrite(context.Background(), home, "work", "dev@acme-corp.com")
+	if !errors.Is(err, boom) {
+		t.Fatalf("Overwrite() error = %v, want it to wrap the keygen failure", err)
+	}
+
+	priv, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatalf("the private key was not restored: %v", err)
+	}
+	if string(priv) != "ORIGINAL PRIVATE" {
+		t.Fatalf("private key = %q, want the original contents", priv)
+	}
+
+	pub, err := os.ReadFile(keyPath + ".pub")
+	if err != nil {
+		t.Fatalf("the public key was not restored: %v", err)
+	}
+	if string(pub) != "ORIGINAL PUBLIC" {
+		t.Fatalf("public key = %q, want the original contents", pub)
+	}
+}
+
+// A failed overwrite must leave the directory exactly as it found it, with no
+// half-renamed leftovers for the next run to trip over.
+func TestOverwrite_LeavesNoBackupBehindOnFailure(t *testing.T) {
+	home := t.TempDir()
+	keyPath := ssh.KeyPathFor(home, "work")
+
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("ORIGINAL PRIVATE"), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ORIGINAL PUBLIC"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	m := ssh.New(&fakeRunner{err: errors.New("keygen exploded")}, nil)
+	_, _ = m.Overwrite(context.Background(), home, "work", "dev@acme-corp.com")
+
+	entries, err := os.ReadDir(filepath.Dir(keyPath))
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".bak") {
+			t.Errorf("stray backup left behind: %s", e.Name())
+		}
+	}
+	if len(entries) != 2 {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("directory holds %d entries (%v), want exactly the two original files", len(entries), names)
+	}
+}
+
+// On success the backup has served its purpose and must not linger: a stale
+// .bak beside a live key is confusing and is still usable key material.
+func TestOverwrite_DiscardsTheBackupOnSuccess(t *testing.T) {
+	home := t.TempDir()
+	keyPath := ssh.KeyPathFor(home, "work")
+
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("ORIGINAL PRIVATE"), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(keyPath+".pub", []byte("ORIGINAL PUBLIC"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	// The fake keygen succeeds without writing anything, which is enough to
+	// prove the backup handling.
+	m := ssh.New(&fakeRunner{}, nil)
+
+	if _, err := m.Overwrite(context.Background(), home, "work", "dev@acme-corp.com"); err != nil {
+		t.Fatalf("Overwrite() = %v, want nil", err)
+	}
+
+	for _, suffix := range []string{".bak", ".pub.bak"} {
+		if _, err := os.Stat(keyPath + suffix); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("backup %s survived a successful overwrite", keyPath+suffix)
+		}
+	}
+}
+
+// ssh-keygen must not find the old files in place, or it prompts for
+// confirmation and hangs an unattended run.
+func TestOverwrite_OldKeyIsOutOfTheWayWhenKeygenRuns(t *testing.T) {
+	home := t.TempDir()
+	keyPath := ssh.KeyPathFor(home, "work")
+
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("ORIGINAL PRIVATE"), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	var presentDuringKeygen bool
+	r := &inspectingRunner{
+		before: func() {
+			_, err := os.Stat(keyPath)
+			presentDuringKeygen = err == nil
+		},
+	}
+	m := ssh.New(r, nil)
+
+	if _, err := m.Overwrite(context.Background(), home, "work", "dev@acme-corp.com"); err != nil {
+		t.Fatalf("Overwrite() = %v, want nil", err)
+	}
+	if presentDuringKeygen {
+		t.Fatal("the old private key was still in place when ssh-keygen ran")
+	}
+}
+
+// A leftover .bak from an earlier interrupted run must not block a new one.
+func TestOverwrite_ToleratesAStaleBackup(t *testing.T) {
+	home := t.TempDir()
+	keyPath := ssh.KeyPathFor(home, "work")
+
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("CURRENT"), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(keyPath+".bak", []byte("STALE FROM A PREVIOUS CRASH"), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	m := ssh.New(&fakeRunner{}, nil)
+
+	if _, err := m.Overwrite(context.Background(), home, "work", "dev@acme-corp.com"); err != nil {
+		t.Fatalf("Overwrite() = %v, want nil despite the stale backup", err)
+	}
+}
+
+// inspectingRunner lets a test observe the filesystem at the instant the
+// command would run.
+type inspectingRunner struct {
+	before func()
+	calls  [][]string
+}
+
+func (r *inspectingRunner) Run(_ context.Context, args ...string) (string, error) {
+	if r.before != nil {
+		r.before()
+	}
+	r.calls = append(r.calls, args)
+	return "", nil
 }
