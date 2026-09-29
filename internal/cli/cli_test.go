@@ -71,7 +71,10 @@ func (f *fakeKeys) write(home, name, email string) (string, error) {
 	}
 
 	keyPath := ssh.KeyPathFor(home, name)
-	if err := os.MkdirAll(strings.TrimSuffix(keyPath, "/"+lastSegment(keyPath)), 0o700); err != nil {
+	// filepath.Dir, not hand-rolled string surgery: on Windows the separator is
+	// a backslash, so trimming a "/"-prefixed suffix leaves the path untouched
+	// and the key file itself gets created as a directory.
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
 		return "", err
 	}
 	if err := os.WriteFile(keyPath, []byte("PRIVATE"), 0o600); err != nil {
@@ -85,14 +88,6 @@ func (f *fakeKeys) write(home, name, email string) (string, error) {
 		return "", err
 	}
 	return keyPath, nil
-}
-
-func lastSegment(p string) string {
-	i := strings.LastIndexAny(p, `/\`)
-	if i < 0 {
-		return p
-	}
-	return p[i+1:]
 }
 
 // newTestCmd builds a root command wired to fakes, with output captured.
