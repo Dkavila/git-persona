@@ -1,0 +1,148 @@
+# Continuous integration: every push to main and every pull request.
+#
+# The matrix is not decoration. This project has platform-specific behaviour
+# worth guarding on all three:
+#   - the file-permission specs are Unix-only and never run on Windows
+#   - the CRLF trimming and core.sshCommand path quoting exist for Windows
+#   - macOS is where most Go developers would install it from source
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Report every platform's result, rather than cancelling the rest on the
+      # first failure. A Windows-only break is the interesting signal here.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify formatting
+        # gofmt -l prints files that need formatting and exits 0 either way,
+        # so the output itself has to be turned into the failure.
+        shell: bash
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        # -race catches data races in the concurrent verify sweep, which is
+        # exactly the code a plain test run would let through.
+        run: go test -race ./...
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Measure
+        run: |
+          go test -coverprofile=coverage.out ./internal/...
+          go tool cover -func=coverage.out | tail -1
+
+      - name: Upload profile
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          retention-days: 14
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Two things matter here, and they are coupled.
+      #
+      # 1. The action major version. golangci-lint-action v6 can only install
+      #    golangci-lint v1, which is why "version: latest" previously resolved
+      #    to v1.64.8 rather than anything newer. v2 support starts at action
+      #    v7; v8 requires golangci-lint >= v2.1.0.
+      #
+      # 2. The linter version is pinned, never "latest". A linter that updates
+      #    itself turns an unrelated commit into a red build, and new default
+      #    rules arrive without anyone choosing them.
+      #
+      # The original failure was a toolchain mismatch: the released binary was
+      # built with an older Go than this module targets, and golangci-lint
+      # refuses to analyse a newer language version than its own:
+      #
+      #   can't load config: the Go language version (go1.24) used to build
+      #   golangci-lint is lower than the targeted Go version (1.27.1)
+      #
+      # A recent v2 build is expected to clear it, but that depends on which Go
+      # the release was compiled with, which is not something the version
+      # number states. If this job fails the same way again, the linter has not
+      # caught up with this Go release yet: bump the pin to a newer tag, or
+      # drop this job. go vet and the gofmt check in the test job already cover
+      # the essentials on all three platforms.
+      #
+      # Note for later: golangci-lint v2 uses a new config schema. A
+      # .golangci.yml added from here on must declare version: "2".
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.14.0
+          args: --timeout=5m
+
+  build:
+    name: build (cross-compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Catches a release-time break early: the pipeline ships six targets, so
+      # a compile error on an architecture nobody develops on should fail here
+      # rather than during a tagged release.
+      - name: Cross-compile every release target
+        env:
+          CGO_ENABLED: 0
+        run: |
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            os=${target%/*}
+            arch=${target#*/}
+            echo "building $os/$arch"
+            GOOS=$os GOARCH=$arch go build -o /dev/null ./cmd/git-persona
+          done
