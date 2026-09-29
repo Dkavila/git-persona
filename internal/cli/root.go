@@ -20,6 +20,7 @@ func NewRootCmd(d Deps) *cobra.Command {
 		newListCmd(d),
 		newCleanCmd(d),
 		newRemoveCmd(d),
+		newVerifyCmd(d),
 	)
 	return root
 }

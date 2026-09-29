@@ -31,10 +31,13 @@ func run() error {
 
 	// This is the composition root: the only place where the real git and ssh
 	// binaries are bound to the command tree.
+	keys := ssh.NewExecManager()
+
 	root := cli.NewRootCmd(cli.Deps{
-		Home: home,
-		Git:  git.New(git.ExecRunner{}),
-		Keys: ssh.NewExecManager(),
+		Home:   home,
+		Git:    git.New(git.ExecRunner{}),
+		Keys:   keys,
+		Prober: keys,
 	})
 	root.Version = version
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Dkavila/git-persona/internal/config"
+	"github.com/Dkavila/git-persona/internal/verify"
 )
 
 // GitClient is the slice of the git layer the CLI needs. It is declared here,
@@ -31,6 +32,9 @@ type Deps struct {
 	Home string
 	Git  GitClient
 	Keys KeyManager
+	// Prober checks a key's connectivity. It is separate from KeyManager so a
+	// command that only creates keys never gains the ability to open sockets.
+	Prober verify.Prober
 	// Now supplies timestamps; injectable so tests are deterministic.
 	Now func() time.Time
 }
