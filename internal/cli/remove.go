@@ -79,8 +79,8 @@ func runRemove(cmd *cobra.Command, d Deps, name string, purgeKey bool) error {
 
 	if wasActive {
 		fmt.Fprintf(out, "\nWarning: %q was the active profile. user.name, user.email and\n", profile.Name)
-		fmt.Fprint(out, "core.sshCommand have been unset from your global Git config.\n")
-		fmt.Fprint(out, "Run \"git-persona use <profile>\" to select another identity.\n")
+		fmt.Fprintln(out, "core.sshCommand have been unset from your global Git config.")
+		fmt.Fprintln(out, `Run "git-persona use <profile>" to select another identity.`)
 	}
 	return nil
 }

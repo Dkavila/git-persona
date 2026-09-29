@@ -1,0 +1,27 @@
+# golangci-lint configuration.
+#
+# Pinned to the v2 schema. The linter is also pinned by version in CI, so the
+# rule set only changes when this repository chooses to change it.
+version: "2"
+
+linters:
+  # The default set: errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+
+  settings:
+    errcheck:
+      # Writes to the command's output stream are deliberately unchecked.
+      #
+      # These all target cobra's OutOrStdout, which is the terminal in
+      # production and a bytes.Buffer in tests. The only realistic failure is a
+      # closed pipe, and at that point reporting the error is futile: it would
+      # be written to the same broken stream. Checking all of them would add a
+      # branch to every line of user-facing output and hide the logic that
+      # actually matters.
+      #
+      # Writes whose failure IS actionable stay checked: tabwriter.Flush in
+      # list and verify, and every filesystem write in config and ssh.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
