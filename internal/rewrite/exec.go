@@ -61,3 +61,20 @@ func (e ExecRunner) Run(env map[string]string, stdin string, args ...string) (st
 
 // compile-time assertion that the production runner satisfies the interface.
 var _ Runner = ExecRunner{}
+
+// ExecRewriter binds the package's operations to a repository path, so a
+// caller can point at any repository without constructing a Runner itself.
+type ExecRewriter struct {
+	// Bin is the git executable. Empty means "git" from PATH.
+	Bin string
+}
+
+// BuildPlan inspects repo and reports what would change.
+func (e ExecRewriter) BuildPlan(repo string, sel Selector, target Identity) (*Plan, error) {
+	return BuildPlan(ExecRunner{Bin: e.Bin, Dir: repo}, sel, target)
+}
+
+// Apply rewrites repo according to the plan.
+func (e ExecRewriter) Apply(repo string, plan *Plan, target Identity, opts Options) (string, error) {
+	return Apply(ExecRunner{Bin: e.Bin, Dir: repo}, plan, target, opts)
+}

@@ -9,10 +9,13 @@ import (
 
 	"github.com/Dkavila/git-persona/internal/cli"
 	"github.com/Dkavila/git-persona/internal/git"
+	"github.com/Dkavila/git-persona/internal/rewrite"
 	"github.com/Dkavila/git-persona/internal/ssh"
 )
 
 // version is injected at build time via -ldflags "-X main.version=...".
+// The default matches the installer's own fallback, so an unreleased build
+// reports the same string everywhere instead of three different ones.
 var version = "0.0.0-dev"
 
 func main() {
@@ -34,10 +37,11 @@ func run() error {
 	keys := ssh.NewExecManager()
 
 	root := cli.NewRootCmd(cli.Deps{
-		Home:   home,
-		Git:    git.New(git.ExecRunner{}),
-		Keys:   keys,
-		Prober: keys,
+		Home:     home,
+		Git:      git.New(git.ExecRunner{}),
+		Keys:     keys,
+		Prober:   keys,
+		Rewriter: rewrite.ExecRewriter{},
 	})
 	root.Version = version
 

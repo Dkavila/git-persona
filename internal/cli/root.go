@@ -21,6 +21,7 @@ func NewRootCmd(d Deps) *cobra.Command {
 		newCleanCmd(d),
 		newRemoveCmd(d),
 		newVerifyCmd(d),
+		newRewriteCmd(d),
 	)
 	return root
 }
