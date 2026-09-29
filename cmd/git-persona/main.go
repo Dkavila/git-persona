@@ -13,7 +13,7 @@ import (
 )
 
 // version is injected at build time via -ldflags "-X main.version=...".
-var version = "dev"
+var version = "0.0.0-dev"
 
 func main() {
 	if err := run(); err != nil {

@@ -88,6 +88,14 @@
   #define AppVersion "0.0.0-dev"
 #endif
 
+; VersionInfoVersion is what Windows shows in the file properties of the
+; installer, and it only accepts digits and dots. AppVersion may carry a
+; pre-release suffix like 1.0.0-rc1, which Inno would reject here, so CI passes
+; the numeric part separately.
+#ifndef VersionInfo
+  #define VersionInfo "0.0.0"
+#endif
+
 #ifndef OutputDir
   #define OutputDir "..\..\dist\installer"
 #endif
@@ -103,6 +111,9 @@ AppId={{7C3A9F14-2B58-4D6E-9A07-51E8C2D4B36F}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
+VersionInfoVersion={#VersionInfo}
+VersionInfoProductVersion={#VersionInfo}
+VersionInfoProductName={#AppName}
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}/issues
