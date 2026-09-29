@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -142,8 +143,7 @@ func TestRootCmd_HasExpectedSubcommands(t *testing.T) {
 		got[c.Name()] = true
 	}
 
-	// verify is registered in Phase 5 and is deliberately absent here.
-	for _, name := range []string{"add", "use", "list", "clean", "remove"} {
+	for _, name := range []string{"add", "use", "list", "clean", "remove", "verify"} {
 		if !got[name] {
 			t.Errorf("subcommand %q not registered", name)
 		}
@@ -937,4 +937,111 @@ func mustLoad(t *testing.T, home string) *config.Store {
 		t.Fatalf("Load() = %v", err)
 	}
 	return store
+}
+
+// --- verify ------------------------------------------------------------------
+
+// fakeProber answers connectivity probes without touching the network.
+type fakeProber struct {
+	mu      sync.Mutex
+	results map[string]ssh.ProbeResult
+	errs    map[string]error
+	calls   int
+}
+
+func (f *fakeProber) ProbeGitHub(_ context.Context, keyPath string) (ssh.ProbeResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+
+	if err, ok := f.errs[keyPath]; ok {
+		return ssh.ProbeResult{}, err
+	}
+	if res, ok := f.results[keyPath]; ok {
+		return res, nil
+	}
+	return ssh.ProbeResult{Authenticated: true, Username: "octocat"}, nil
+}
+
+func newVerifyCmd(t *testing.T, home string, p *fakeProber) (*cobra.Command, *bytes.Buffer) {
+	t.Helper()
+
+	out := &bytes.Buffer{}
+	root := cli.NewRootCmd(cli.Deps{
+		Home:   home,
+		Git:    &fakeGit{},
+		Keys:   &fakeKeys{},
+		Prober: p,
+		Now:    func() time.Time { return fixedTime },
+	})
+	root.SetOut(out)
+	root.SetErr(out)
+	return root, out
+}
+
+func TestVerifyCmd_ReportsEveryProfile(t *testing.T) {
+	home := t.TempDir()
+	work := profile("work", "dev@acme-corp.com")
+	personal := profile("personal", "me@example.com")
+	seedStore(t, home, []config.Profile{work, personal}, "work")
+
+	p := &fakeProber{
+		results: map[string]ssh.ProbeResult{
+			work.KeyPath:     {Authenticated: true, Username: "octocat"},
+			personal.KeyPath: {Authenticated: false},
+		},
+		errs: map[string]error{},
+	}
+
+	root, out := newVerifyCmd(t, home, p)
+	root.SetArgs([]string{"verify"})
+
+	// A rejected key makes the command exit non-zero, which is what lets a
+	// script or CI job act on the result.
+	if err := root.Execute(); err == nil {
+		t.Fatal("Execute() = nil, want a non-nil error when a profile fails")
+	}
+
+	if p.calls != 2 {
+		t.Fatalf("probe calls = %d, want 2", p.calls)
+	}
+
+	got := out.String()
+	for _, want := range []string{"work", "personal", "octocat"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestVerifyCmd_AllHealthyExitsZero(t *testing.T) {
+	home := t.TempDir()
+	work := profile("work", "dev@acme-corp.com")
+	seedStore(t, home, []config.Profile{work}, "work")
+
+	p := &fakeProber{results: map[string]ssh.ProbeResult{}, errs: map[string]error{}}
+
+	root, _ := newVerifyCmd(t, home, p)
+	root.SetArgs([]string{"verify"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil when every profile authenticates", err)
+	}
+}
+
+func TestVerifyCmd_EmptyStore(t *testing.T) {
+	p := &fakeProber{results: map[string]ssh.ProbeResult{}, errs: map[string]error{}}
+
+	root, out := newVerifyCmd(t, t.TempDir(), p)
+	root.SetArgs([]string{"verify"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil (an empty store is not a failure)", err)
+	}
+	if p.calls != 0 {
+		t.Fatalf("probe calls = %d, want 0", p.calls)
+	}
+	if !strings.Contains(out.String(), "add") {
+		t.Fatalf("output does not point at the add command:\n%s", out.String())
+	}
 }
