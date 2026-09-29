@@ -15,6 +15,7 @@ import (
 
 	"github.com/Dkavila/git-persona/internal/cli"
 	"github.com/Dkavila/git-persona/internal/config"
+	"github.com/Dkavila/git-persona/internal/rewrite"
 	"github.com/Dkavila/git-persona/internal/ssh"
 )
 
@@ -138,7 +139,7 @@ func TestRootCmd_HasExpectedSubcommands(t *testing.T) {
 		got[c.Name()] = true
 	}
 
-	for _, name := range []string{"add", "use", "list", "clean", "remove", "verify"} {
+	for _, name := range []string{"add", "use", "list", "clean", "remove", "verify", "rewrite"} {
 		if !got[name] {
 			t.Errorf("subcommand %q not registered", name)
 		}
@@ -1038,5 +1039,296 @@ func TestVerifyCmd_EmptyStore(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "add") {
 		t.Fatalf("output does not point at the add command:\n%s", out.String())
+	}
+}
+
+// --- rewrite -----------------------------------------------------------------
+
+type planCall struct {
+	repo   string
+	sel    rewrite.Selector
+	target rewrite.Identity
+}
+
+type applyCall struct {
+	repo   string
+	target rewrite.Identity
+	opts   rewrite.Options
+}
+
+// fakeRewriter stands in for the plumbing so the command can be tested without
+// a repository.
+type fakeRewriter struct {
+	plans   []planCall
+	applies []applyCall
+
+	plan      *rewrite.Plan
+	planErr   error
+	backupRef string
+	applyErr  error
+}
+
+func (f *fakeRewriter) BuildPlan(repo string, sel rewrite.Selector, target rewrite.Identity) (*rewrite.Plan, error) {
+	f.plans = append(f.plans, planCall{repo, sel, target})
+	if f.planErr != nil {
+		return nil, f.planErr
+	}
+	return f.plan, nil
+}
+
+func (f *fakeRewriter) Apply(repo string, _ *rewrite.Plan, target rewrite.Identity, opts rewrite.Options) (string, error) {
+	f.applies = append(f.applies, applyCall{repo, target, opts})
+	return f.backupRef, f.applyErr
+}
+
+func samplePlan() *rewrite.Plan {
+	return &rewrite.Plan{
+		Branch: "main",
+		Head:   "ccc333",
+		Total:  30,
+		Changes: []rewrite.Change{
+			{
+				OldHash:   "bbb222",
+				Subject:   "feat: add remove command",
+				OldAuthor: rewrite.Identity{Name: "work", Email: "dev@acme-corp.com"},
+			},
+			{
+				OldHash:   "ccc333",
+				Subject:   "docs: readme",
+				OldAuthor: rewrite.Identity{Name: "personal", Email: "me@example.com"},
+			},
+		},
+	}
+}
+
+func newRewriteCmd(t *testing.T, home string, rw *fakeRewriter) (*cobra.Command, *bytes.Buffer) {
+	t.Helper()
+
+	out := &bytes.Buffer{}
+	root := cli.NewRootCmd(cli.Deps{
+		Home:     home,
+		Git:      &fakeGit{},
+		Keys:     &fakeKeys{},
+		Prober:   &fakeProber{},
+		Rewriter: rw,
+		Now:      func() time.Time { return fixedTime },
+	})
+	root.SetOut(out)
+	root.SetErr(out)
+	return root, out
+}
+
+// The default must never touch the repository: this is the most destructive
+// command in the tool.
+func TestRewriteCmd_IsADryRunByDefault(t *testing.T) {
+	home := t.TempDir()
+	seedStore(t, home, []config.Profile{profile("personal", "me@example.com")}, "")
+
+	rw := &fakeRewriter{plan: samplePlan()}
+	root, out := newRewriteCmd(t, home, rw)
+	root.SetArgs([]string{"rewrite", "personal"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+
+	if len(rw.plans) != 1 {
+		t.Fatalf("BuildPlan calls = %d, want 1", len(rw.plans))
+	}
+	if len(rw.applies) != 0 {
+		t.Fatalf("Apply calls = %d, want 0 without --apply", len(rw.applies))
+	}
+
+	got := out.String()
+	for _, want := range []string{"bbb222", "feat: add remove command", "work", "--apply"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestRewriteCmd_ApplyRewrites(t *testing.T) {
+	home := t.TempDir()
+	seedStore(t, home, []config.Profile{profile("personal", "me@example.com")}, "")
+
+	rw := &fakeRewriter{plan: samplePlan(), backupRef: "refs/git-persona/backup/20260930-120000"}
+	root, out := newRewriteCmd(t, home, rw)
+	root.SetArgs([]string{"rewrite", "personal", "--apply"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+	if len(rw.applies) != 1 {
+		t.Fatalf("Apply calls = %d, want 1", len(rw.applies))
+	}
+
+	got := out.String()
+	// The user has to be told how to recover and how to publish the result,
+	// or the command leaves them stranded.
+	for _, want := range []string{"refs/git-persona/backup/20260930-120000", "force-with-lease", "reset --hard"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// The whole point of naming a profile is that its identity is what gets
+// written, rather than something typed again by hand.
+func TestRewriteCmd_UsesTheProfileIdentity(t *testing.T) {
+	home := t.TempDir()
+	seedStore(t, home, []config.Profile{profile("personal", "me@example.com")}, "")
+
+	rw := &fakeRewriter{plan: samplePlan()}
+	root, _ := newRewriteCmd(t, home, rw)
+	root.SetArgs([]string{"rewrite", "personal"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+
+	got := rw.plans[0].target
+	if got.Name != "personal" || got.Email != "me@example.com" {
+		t.Fatalf("target = %+v, want the stored profile identity", got)
+	}
+}
+
+func TestRewriteCmd_PassesEverySelector(t *testing.T) {
+	home := t.TempDir()
+	seedStore(t, home, []config.Profile{profile("personal", "me@example.com")}, "")
+
+	rw := &fakeRewriter{plan: samplePlan()}
+	root, _ := newRewriteCmd(t, home, rw)
+	root.SetArgs([]string{
+		"rewrite", "personal",
+		"--from", "dev@acme-corp.com",
+		"--commit", "aaa111",
+		"--commit", "bbb222",
+		"--range", "HEAD~5..HEAD",
+		"--repo", "/srv/work/api",
+	})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+
+	call := rw.plans[0]
+	if call.repo != "/srv/work/api" {
+		t.Errorf("repo = %q, want %q", call.repo, "/srv/work/api")
+	}
+	if call.sel.FromEmail != "dev@acme-corp.com" {
+		t.Errorf("FromEmail = %q", call.sel.FromEmail)
+	}
+	if len(call.sel.Commits) != 2 || call.sel.Commits[0] != "aaa111" || call.sel.Commits[1] != "bbb222" {
+		t.Errorf("Commits = %v, want [aaa111 bbb222]", call.sel.Commits)
+	}
+	if call.sel.Range != "HEAD~5..HEAD" {
+		t.Errorf("Range = %q", call.sel.Range)
+	}
+}
+
+func TestRewriteCmd_PassesAuthorOnly(t *testing.T) {
+	home := t.TempDir()
+	seedStore(t, home, []config.Profile{profile("personal", "me@example.com")}, "")
+
+	rw := &fakeRewriter{plan: samplePlan(), backupRef: "refs/x"}
+	root, _ := newRewriteCmd(t, home, rw)
+	root.SetArgs([]string{"rewrite", "personal", "--apply", "--author-only"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+	if !rw.applies[0].opts.AuthorOnly {
+		t.Fatal("AuthorOnly did not reach the rewriter")
+	}
+}
+
+func TestRewriteCmd_DefaultsToTheCurrentDirectory(t *testing.T) {
+	home := t.TempDir()
+	seedStore(t, home, []config.Profile{profile("personal", "me@example.com")}, "")
+
+	rw := &fakeRewriter{plan: samplePlan()}
+	root, _ := newRewriteCmd(t, home, rw)
+	root.SetArgs([]string{"rewrite", "personal"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+	if rw.plans[0].repo != "." {
+		t.Fatalf("repo = %q, want %q", rw.plans[0].repo, ".")
+	}
+}
+
+// An empty plan is a normal outcome, not a failure, and must not reach Apply
+// even when --apply was passed.
+func TestRewriteCmd_NothingToRewrite(t *testing.T) {
+	home := t.TempDir()
+	seedStore(t, home, []config.Profile{profile("personal", "me@example.com")}, "")
+
+	rw := &fakeRewriter{plan: &rewrite.Plan{Branch: "main", Total: 30}}
+	root, out := newRewriteCmd(t, home, rw)
+	root.SetArgs([]string{"rewrite", "personal", "--apply"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() = %v, want nil", err)
+	}
+	if len(rw.applies) != 0 {
+		t.Fatalf("Apply calls = %d, want 0 for an empty plan", len(rw.applies))
+	}
+	if strings.TrimSpace(out.String()) == "" {
+		t.Fatal("output is empty; the user must be told nothing matched")
+	}
+}
+
+func TestRewriteCmd_UnknownProfile(t *testing.T) {
+	home := t.TempDir()
+	seedStore(t, home, []config.Profile{profile("personal", "me@example.com")}, "")
+
+	rw := &fakeRewriter{plan: samplePlan()}
+	root, _ := newRewriteCmd(t, home, rw)
+	root.SetArgs([]string{"rewrite", "ghost"})
+
+	if err := root.Execute(); !errors.Is(err, config.ErrProfileNotFound) {
+		t.Fatalf("Execute() error = %v, want ErrProfileNotFound", err)
+	}
+	if len(rw.plans) != 0 {
+		t.Fatalf("BuildPlan calls = %d, want 0", len(rw.plans))
+	}
+}
+
+func TestRewriteCmd_RequiresProfileName(t *testing.T) {
+	root, _ := newRewriteCmd(t, t.TempDir(), &fakeRewriter{})
+	root.SetArgs([]string{"rewrite"})
+
+	if err := root.Execute(); err == nil {
+		t.Fatal("Execute() = nil, want an argument error")
+	}
+}
+
+// A refusal from the plumbing, such as a dirty working tree, has to surface
+// rather than be swallowed into a silent no-op.
+func TestRewriteCmd_PropagatesAPlanFailure(t *testing.T) {
+	home := t.TempDir()
+	seedStore(t, home, []config.Profile{profile("personal", "me@example.com")}, "")
+
+	rw := &fakeRewriter{planErr: rewrite.ErrDirtyWorkingTree}
+	root, _ := newRewriteCmd(t, home, rw)
+	root.SetArgs([]string{"rewrite", "personal"})
+
+	if err := root.Execute(); !errors.Is(err, rewrite.ErrDirtyWorkingTree) {
+		t.Fatalf("Execute() error = %v, want ErrDirtyWorkingTree", err)
+	}
+}
+
+func TestRewriteCmd_PropagatesAnApplyFailure(t *testing.T) {
+	home := t.TempDir()
+	seedStore(t, home, []config.Profile{profile("personal", "me@example.com")}, "")
+
+	boom := errors.New("update-ref refused")
+	rw := &fakeRewriter{plan: samplePlan(), applyErr: boom}
+	root, _ := newRewriteCmd(t, home, rw)
+	root.SetArgs([]string{"rewrite", "personal", "--apply"})
+
+	if err := root.Execute(); !errors.Is(err, boom) {
+		t.Fatalf("Execute() error = %v, want the underlying failure", err)
 	}
 }
