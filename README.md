@@ -224,7 +224,7 @@ make vet
 | `internal/verify` | 95.1% |
 | `internal/cli` | 88.3% |
 | `internal/config` | 87.1% |
-| `internal/ssh` | 79.6% |
+| `internal/ssh` | 80.7% |
 | `internal/git` | 70.7% |
 
 CI runs the suite on Linux, Windows and macOS. The matrix is not decoration: the file-permission specs are Unix-only, and the CRLF trimming and `core.sshCommand` quoting exist specifically for Windows.
@@ -234,14 +234,13 @@ CI runs the suite on Linux, Windows and macOS. The matrix is not decoration: the
 - **Keys are generated without a passphrase.** `core.sshCommand` has to authenticate unattended, so the key's protection is its file permissions. `~/.ssh` is created `0700` and the store `0600`.
 - **Windows paths are normalised.** Git parses `core.sshCommand` with shell-like rules where `\` is an escape character, so key paths are written with forward slashes and quoted. `C:/Users/Jane Doe/.ssh/...` works.
 - **`ssh -T git@github.com` exits 1 on success**, because GitHub refuses shell access. `verify` therefore reads the transcript rather than the exit status — an implementation that trusts the exit code reports every working key as broken.
-- **Overwriting a key is not yet crash-safe.** `add` with `O` deletes the old pair before generating the new one; if `ssh-keygen` fails in between, neither key survives. Tracked as a known issue.
+- **Overwriting a key is crash-safe.** `add` with `O` moves the old pair aside rather than deleting it, so a failing `ssh-keygen` leaves the original intact instead of destroying a key that may be registered with a provider. The backup is discarded only once the new key is in place.
 
 ## Roadmap
 
 - [x] `add`, `use`, `list`, `clean`, `remove`
 - [x] `verify` — concurrent GitHub probing with goroutines and channels
 - [x] Windows installer with `gitp` alias, and a GoReleaser release pipeline
-- [ ] Make key overwrite crash-safe by backing up the old pair first
 - [ ] Publish to Scoop and Homebrew taps
 - [ ] Support providers beyond GitHub in `verify`
 
