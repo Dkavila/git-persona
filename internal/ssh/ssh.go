@@ -111,6 +111,39 @@ func (m *Manager) Generate(ctx context.Context, home, profileName, email string)
 	return keyPath, nil
 }
 
+// KeyExists reports whether a private key is already present at keyPath.
+//
+// It is separate from Generate so callers can decide what to do about an
+// existing key before any irreversible step is taken.
+func KeyExists(keyPath string) (bool, error) {
+	_, err := os.Stat(keyPath)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, fmt.Errorf("inspect key path: %w", err)
+}
+
+// Overwrite replaces an existing key pair with a freshly generated one.
+//
+// It is the deliberate counterpart to Generate, which refuses to clobber. The
+// old pair is removed first for two reasons: ssh-keygen would otherwise prompt
+// for confirmation and hang an unattended run, and a stale .pub left beside a
+// new private key would mislead anyone who reads it.
+//
+// This is irreversible. A key already registered with a provider stops working
+// the moment it is replaced.
+func (m *Manager) Overwrite(ctx context.Context, home, profileName, email string) (string, error) {
+	keyPath := KeyPathFor(home, profileName)
+
+	if err := RemoveKeyPair(keyPath); err != nil {
+		return "", fmt.Errorf("remove the existing key: %w", err)
+	}
+	return m.Generate(ctx, home, profileName, email)
+}
+
 // PublicKey reads the public half of a key pair, ready to paste into a
 // provider's settings page.
 func PublicKey(keyPath string) (string, error) {

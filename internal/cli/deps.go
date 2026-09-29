@@ -19,7 +19,10 @@ type GitClient interface {
 
 // KeyManager is the slice of the ssh layer the CLI needs.
 type KeyManager interface {
+	// Generate creates a new key pair and refuses if one already exists.
 	Generate(ctx context.Context, home, profileName, email string) (keyPath string, err error)
+	// Overwrite replaces an existing key pair with a new one.
+	Overwrite(ctx context.Context, home, profileName, email string) (keyPath string, err error)
 }
 
 // Deps carries everything the command tree needs from the outside world.
