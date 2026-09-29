@@ -1,0 +1,28 @@
+# Line endings are declared explicitly so the working tree is identical on
+# every machine and in CI. Without this, a Windows checkout and a Linux
+# checkout disagree, and every file shows as modified with no real change.
+
+# Default: let Git decide what is text, and store it with LF.
+* text=auto eol=lf
+
+# Source and config: LF everywhere, including on Windows. Go tooling, YAML
+# parsers and Git itself all handle LF natively.
+*.go       text eol=lf
+*.md       text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.mod      text eol=lf
+*.sum      text eol=lf
+Makefile   text eol=lf
+
+# Windows-native formats that are parsed by Windows tooling. cmd.exe is
+# unreliable with bare LF, and the Inno Setup compiler expects CRLF.
+*.cmd      text eol=crlf
+*.bat      text eol=crlf
+*.ps1      text eol=crlf
+*.iss      text eol=crlf
+
+# Never touched.
+*.exe      binary
+*.png      binary
+*.ico      binary
