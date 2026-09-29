@@ -126,22 +126,102 @@ func KeyExists(keyPath string) (bool, error) {
 	return false, fmt.Errorf("inspect key path: %w", err)
 }
 
+// backupSuffix marks the temporary copy taken before a key is replaced.
+const backupSuffix = ".bak"
+
+// keyBackup records where a key pair was moved so it can be put back.
+type keyBackup struct {
+	keyPath string
+	// moved lists the pairs actually renamed, as {from, to}. Only files that
+	// existed are recorded, so restoring never invents a file.
+	moved [][2]string
+}
+
 // Overwrite replaces an existing key pair with a freshly generated one.
 //
-// It is the deliberate counterpart to Generate, which refuses to clobber. The
-// old pair is removed first for two reasons: ssh-keygen would otherwise prompt
-// for confirmation and hang an unattended run, and a stale .pub left beside a
-// new private key would mislead anyone who reads it.
+// It is the deliberate counterpart to Generate, which refuses to clobber.
 //
-// This is irreversible. A key already registered with a provider stops working
-// the moment it is replaced.
+// The old pair is moved aside rather than deleted, for two reasons. ssh-keygen
+// prompts for confirmation when the target exists, which would hang an
+// unattended run; and if generation then fails, the original is put back. The
+// destructive alternative, deleting first, leaves the user with no key at all
+// when ssh-keygen fails: the old one is gone and the new one was never
+// written. That old key may be registered with a provider.
 func (m *Manager) Overwrite(ctx context.Context, home, profileName, email string) (string, error) {
 	keyPath := KeyPathFor(home, profileName)
 
-	if err := RemoveKeyPair(keyPath); err != nil {
-		return "", fmt.Errorf("remove the existing key: %w", err)
+	backup, err := moveKeyPairAside(keyPath)
+	if err != nil {
+		return "", fmt.Errorf("back up the existing key: %w", err)
 	}
-	return m.Generate(ctx, home, profileName, email)
+
+	newPath, genErr := m.Generate(ctx, home, profileName, email)
+	if genErr != nil {
+		if restoreErr := backup.restore(); restoreErr != nil {
+			// Both failed. Say where the material is, because at this point
+			// only the user can recover it.
+			return "", fmt.Errorf(
+				"%w (restoring the previous key also failed: %v; it is at %s%s)",
+				genErr, restoreErr, keyPath, backupSuffix)
+		}
+		return "", genErr
+	}
+
+	// The new key is in place, so the backup is now stale key material and
+	// must not linger beside it.
+	backup.discard()
+	return newPath, nil
+}
+
+// moveKeyPairAside renames both halves of a key pair out of the way. Files
+// that do not exist are skipped, so a half pair or no pair at all is fine.
+func moveKeyPairAside(keyPath string) (*keyBackup, error) {
+	b := &keyBackup{keyPath: keyPath}
+
+	for _, path := range []string{keyPath, keyPath + ".pub"} {
+		if _, err := os.Stat(path); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, err
+		}
+
+		// os.Rename replaces the destination on every supported platform, so a
+		// stale .bak from an earlier interrupted run does not block this.
+		dst := path + backupSuffix
+		if err := os.Rename(path, dst); err != nil {
+			// Undo whatever moved already, so a partial failure does not leave
+			// the pair split between two names.
+			_ = b.restore()
+			return nil, err
+		}
+		b.moved = append(b.moved, [2]string{path, dst})
+	}
+	return b, nil
+}
+
+// restore puts every moved file back under its original name.
+func (b *keyBackup) restore() error {
+	var firstErr error
+	for _, pair := range b.moved {
+		if err := os.Rename(pair[1], pair[0]); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if firstErr == nil {
+		b.moved = nil
+	}
+	return firstErr
+}
+
+// discard deletes the backup once it is no longer needed. Failures are
+// ignored: the new key is already in place, and refusing to return it because
+// a leftover file could not be removed would be worse than the leftover.
+func (b *keyBackup) discard() {
+	for _, pair := range b.moved {
+		_ = os.Remove(pair[1])
+	}
+	b.moved = nil
 }
 
 // PublicKey reads the public half of a key pair, ready to paste into a
