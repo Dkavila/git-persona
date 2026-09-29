@@ -94,6 +94,8 @@ jobs:
             "/DAppVersion=$version" `
             "/DVersionInfo=$numeric" `
             "/DOutputDir=$output" `
+            "/DOutputBaseFilename=GitPersona_Installer" `
+            "build\windows\installer.iss"
 
           if ($LASTEXITCODE -ne 0) { throw "iscc failed with exit code $LASTEXITCODE" }
 
