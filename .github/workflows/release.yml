@@ -33,7 +33,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
-+         version: v2.18.2
+          version: v2.18.2
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -84,15 +84,15 @@ jobs:
           # Strip the leading "v": Inno's AppVersion expects a bare version.
           $version = "${{ github.ref_name }}" -replace '^v', ''
 
-+         # VersionInfoVersion accepts digits and dots only, so a pre-release
-+         # tag such as v1.0.0-rc1 has to lose its suffix here.
-+         $numeric = ($version -split '-')[0]
+          # VersionInfoVersion accepts digits and dots only, so a pre-release
+          # tag such as v1.0.0-rc1 has to lose its suffix here.
+          $numeric = ($version -split '-')[0]
 
           $output  = Join-Path $PWD 'dist\installer'
           & "$env:ISCC" `
             "/DBinaryDir=$env:INNO_BINARY_DIR" `
             "/DAppVersion=$version" `
-+           "/DVersionInfo=$numeric" `
+            "/DVersionInfo=$numeric" `
             "/DOutputDir=$output" `
 
           if ($LASTEXITCODE -ne 0) { throw "iscc failed with exit code $LASTEXITCODE" }
