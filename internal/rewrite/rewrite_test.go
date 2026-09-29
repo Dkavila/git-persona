@@ -12,7 +12,11 @@ import (
 // metaFormat is the exact --format string the implementation must use. NUL
 // separates the fields because it is the one byte a commit field cannot hold,
 // so a message containing newlines or percent signs cannot corrupt parsing.
-const metaFormat = "%T%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%B"
+//
+// The trailing %x00 closes the message field. Without it the newline that
+// --format always appends would be read as part of the message, and every
+// rewrite would grow it by one blank line.
+const metaFormat = "%T%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%B%x00"
 
 type fixture struct {
 	hash, tree string
@@ -98,7 +102,10 @@ func (f *fakeGit) Run(env map[string]string, stdin string, args ...string) (stri
 			c.cn, c.ce, c.cd,
 			c.message,
 		}
-		return strings.Join(fields, "\x00"), nil
+		// git's --format terminates its output with a newline, after the
+		// final NUL. Reproducing that is what makes the message parsing
+		// testable at all.
+		return strings.Join(fields, "\x00") + "\x00\n", nil
 
 	case "commit-tree":
 		f.counter++
@@ -133,27 +140,27 @@ func (f *fakeGit) argvFor(cmd string) [][]string {
 	return out
 }
 
-var target = rewrite.Identity{Name: "Derick Avila", Email: "derickmavila@gmail.com"}
+var target = rewrite.Identity{Name: "Jane Doe", Email: "me@example.com"}
 
 // A three-commit line: the middle one carries the address to replace.
 func threeCommits() *fakeGit {
 	return newFakeGit("main",
 		fixture{
 			hash: "aaa111", tree: "tree1", parents: nil,
-			an: "Derick Avila", ae: "derickmavila@gmail.com", ad: "2026-09-20T10:00:00-03:00",
-			cn: "Derick Avila", ce: "derickmavila@gmail.com", cd: "2026-09-20T10:00:00-03:00",
+			an: "Jane Doe", ae: "me@example.com", ad: "2026-09-20T10:00:00-03:00",
+			cn: "Jane Doe", ce: "me@example.com", cd: "2026-09-20T10:00:00-03:00",
 			message: "chore: scaffold\n",
 		},
 		fixture{
 			hash: "bbb222", tree: "tree2", parents: []string{"aaa111"},
-			an: "work", ae: "derick.avila@ezops.cloud", ad: "2026-09-21T11:30:00-03:00",
-			cn: "work", ce: "derick.avila@ezops.cloud", cd: "2026-09-21T11:35:00-03:00",
+			an: "work", ae: "dev@acme-corp.com", ad: "2026-09-21T11:30:00-03:00",
+			cn: "work", ce: "dev@acme-corp.com", cd: "2026-09-21T11:35:00-03:00",
 			message: "feat: add remove command\n\nWith a body.\n",
 		},
 		fixture{
 			hash: "ccc333", tree: "tree3", parents: []string{"bbb222"},
-			an: "personal", ae: "derickmavila@gmail.com", ad: "2026-09-22T09:00:00-03:00",
-			cn: "personal", ce: "derickmavila@gmail.com", cd: "2026-09-22T09:00:00-03:00",
+			an: "personal", ae: "me@example.com", ad: "2026-09-22T09:00:00-03:00",
+			cn: "personal", ce: "me@example.com", cd: "2026-09-22T09:00:00-03:00",
 			message: "docs: readme\n",
 		},
 	)
@@ -164,7 +171,7 @@ func threeCommits() *fakeGit {
 func TestBuildPlan_SelectsByAuthorEmail(t *testing.T) {
 	g := threeCommits()
 
-	plan, err := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "derick.avila@ezops.cloud"}, target)
+	plan, err := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "dev@acme-corp.com"}, target)
 	if err != nil {
 		t.Fatalf("BuildPlan() = %v, want nil", err)
 	}
@@ -186,7 +193,7 @@ func TestBuildPlan_SelectsByAuthorEmail(t *testing.T) {
 func TestBuildPlan_EmailMatchIgnoresCase(t *testing.T) {
 	g := threeCommits()
 
-	plan, err := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "DERICK.AVILA@EZOPS.CLOUD"}, target)
+	plan, err := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "DEV@ACME-CORP.COM"}, target)
 	if err != nil {
 		t.Fatalf("BuildPlan() = %v, want nil", err)
 	}
@@ -255,7 +262,7 @@ func TestBuildPlan_SkipsCommitsAlreadyOwnedByTheTarget(t *testing.T) {
 	g := threeCommits()
 
 	plan, err := rewrite.BuildPlan(g, rewrite.Selector{}, rewrite.Identity{
-		Name: "Derick Avila", Email: "derickmavila@gmail.com",
+		Name: "Jane Doe", Email: "me@example.com",
 	})
 	if err != nil {
 		t.Fatalf("BuildPlan() = %v, want nil", err)
@@ -271,14 +278,14 @@ func TestBuildPlan_SkipsCommitsAlreadyOwnedByTheTarget(t *testing.T) {
 func TestBuildPlan_RecordsTheOldIdentityForReporting(t *testing.T) {
 	g := threeCommits()
 
-	plan, err := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "derick.avila@ezops.cloud"}, target)
+	plan, err := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "dev@acme-corp.com"}, target)
 	if err != nil {
 		t.Fatalf("BuildPlan() = %v, want nil", err)
 	}
 
 	c := plan.Changes[0]
-	if c.OldAuthor.Name != "work" || c.OldAuthor.Email != "derick.avila@ezops.cloud" {
-		t.Fatalf("OldAuthor = %+v, want work <derick.avila@ezops.cloud>", c.OldAuthor)
+	if c.OldAuthor.Name != "work" || c.OldAuthor.Email != "dev@acme-corp.com" {
+		t.Fatalf("OldAuthor = %+v, want work <dev@acme-corp.com>", c.OldAuthor)
 	}
 	if !strings.HasPrefix(c.Subject, "feat: add remove command") {
 		t.Fatalf("Subject = %q, want the first line of the message", c.Subject)
@@ -325,7 +332,7 @@ func TestBuildPlan_RefusesDetachedHead(t *testing.T) {
 
 func TestApply_RewritesTheSelectedAuthor(t *testing.T) {
 	g := threeCommits()
-	plan, _ := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "derick.avila@ezops.cloud"}, target)
+	plan, _ := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "dev@acme-corp.com"}, target)
 
 	if _, err := rewrite.Apply(g, plan, target, rewrite.Options{}); err != nil {
 		t.Fatalf("Apply() = %v, want nil", err)
@@ -337,10 +344,10 @@ func TestApply_RewritesTheSelectedAuthor(t *testing.T) {
 			rewritten = c
 		}
 	}
-	if rewritten.an != "Derick Avila" || rewritten.ae != "derickmavila@gmail.com" {
-		t.Fatalf("author = %s <%s>, want Derick Avila <derickmavila@gmail.com>", rewritten.an, rewritten.ae)
+	if rewritten.an != "Jane Doe" || rewritten.ae != "me@example.com" {
+		t.Fatalf("author = %s <%s>, want Jane Doe <me@example.com>", rewritten.an, rewritten.ae)
 	}
-	if rewritten.cn != "Derick Avila" || rewritten.ce != "derickmavila@gmail.com" {
+	if rewritten.cn != "Jane Doe" || rewritten.ce != "me@example.com" {
 		t.Fatalf("committer = %s <%s>, want it rewritten too by default", rewritten.cn, rewritten.ce)
 	}
 }
@@ -348,7 +355,7 @@ func TestApply_RewritesTheSelectedAuthor(t *testing.T) {
 // Rewriting authorship must not move anything on the timeline.
 func TestApply_PreservesBothDates(t *testing.T) {
 	g := threeCommits()
-	plan, _ := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "derick.avila@ezops.cloud"}, target)
+	plan, _ := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "dev@acme-corp.com"}, target)
 
 	if _, err := rewrite.Apply(g, plan, target, rewrite.Options{}); err != nil {
 		t.Fatalf("Apply() = %v, want nil", err)
@@ -368,7 +375,7 @@ func TestApply_PreservesBothDates(t *testing.T) {
 
 func TestApply_AuthorOnlyLeavesTheCommitterAlone(t *testing.T) {
 	g := threeCommits()
-	plan, _ := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "derick.avila@ezops.cloud"}, target)
+	plan, _ := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "dev@acme-corp.com"}, target)
 
 	if _, err := rewrite.Apply(g, plan, target, rewrite.Options{AuthorOnly: true}); err != nil {
 		t.Fatalf("Apply() = %v, want nil", err)
@@ -376,10 +383,10 @@ func TestApply_AuthorOnlyLeavesTheCommitterAlone(t *testing.T) {
 
 	for _, c := range g.written {
 		if strings.HasPrefix(c.message, "feat: add remove command") {
-			if c.ae != "derickmavila@gmail.com" {
+			if c.ae != "me@example.com" {
 				t.Errorf("author was not rewritten: %q", c.ae)
 			}
-			if c.ce != "derick.avila@ezops.cloud" {
+			if c.ce != "dev@acme-corp.com" {
 				t.Errorf("committer = %q, want it untouched under AuthorOnly", c.ce)
 			}
 		}
@@ -390,7 +397,7 @@ func TestApply_AuthorOnlyLeavesTheCommitterAlone(t *testing.T) {
 // be rebuilt against the new parent rather than the old one.
 func TestApply_RemapsParents(t *testing.T) {
 	g := threeCommits()
-	plan, _ := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "derick.avila@ezops.cloud"}, target)
+	plan, _ := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "dev@acme-corp.com"}, target)
 
 	if _, err := rewrite.Apply(g, plan, target, rewrite.Options{}); err != nil {
 		t.Fatalf("Apply() = %v, want nil", err)
@@ -411,14 +418,14 @@ func TestApply_RemapsParents(t *testing.T) {
 
 func TestApply_RemapsEveryParentOfAMerge(t *testing.T) {
 	g := newFakeGit("main",
-		fixture{hash: "aaa111", tree: "t1", an: "work", ae: "derick.avila@ezops.cloud",
-			ad: "2026-09-20T10:00:00-03:00", cn: "work", ce: "derick.avila@ezops.cloud",
+		fixture{hash: "aaa111", tree: "t1", an: "work", ae: "dev@acme-corp.com",
+			ad: "2026-09-20T10:00:00-03:00", cn: "work", ce: "dev@acme-corp.com",
 			cd: "2026-09-20T10:00:00-03:00", message: "base\n"},
-		fixture{hash: "bbb222", tree: "t2", parents: []string{"aaa111"}, an: "work", ae: "derick.avila@ezops.cloud",
-			ad: "2026-09-20T11:00:00-03:00", cn: "work", ce: "derick.avila@ezops.cloud",
+		fixture{hash: "bbb222", tree: "t2", parents: []string{"aaa111"}, an: "work", ae: "dev@acme-corp.com",
+			ad: "2026-09-20T11:00:00-03:00", cn: "work", ce: "dev@acme-corp.com",
 			cd: "2026-09-20T11:00:00-03:00", message: "side\n"},
-		fixture{hash: "ccc333", tree: "t3", parents: []string{"aaa111", "bbb222"}, an: "work", ae: "derick.avila@ezops.cloud",
-			ad: "2026-09-20T12:00:00-03:00", cn: "work", ce: "derick.avila@ezops.cloud",
+		fixture{hash: "ccc333", tree: "t3", parents: []string{"aaa111", "bbb222"}, an: "work", ae: "dev@acme-corp.com",
+			ad: "2026-09-20T12:00:00-03:00", cn: "work", ce: "dev@acme-corp.com",
 			cd: "2026-09-20T12:00:00-03:00", message: "merge\n"},
 	)
 
@@ -532,4 +539,26 @@ func contains(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// The message must survive a rewrite byte for byte. It is the field most
+// easily corrupted, because git's --format appends a newline of its own.
+func TestApply_PreservesTheMessageExactly(t *testing.T) {
+	g := threeCommits()
+	plan, _ := rewrite.BuildPlan(g, rewrite.Selector{FromEmail: "dev@acme-corp.com"}, target)
+
+	if _, err := rewrite.Apply(g, plan, target, rewrite.Options{}); err != nil {
+		t.Fatalf("Apply() = %v, want nil", err)
+	}
+
+	const want = "feat: add remove command\n\nWith a body.\n"
+	for _, c := range g.written {
+		if strings.HasPrefix(c.message, "feat: add remove command") {
+			if c.message != want {
+				t.Fatalf("message = %q, want %q", c.message, want)
+			}
+			return
+		}
+	}
+	t.Fatal("the rewritten commit was not found")
 }
