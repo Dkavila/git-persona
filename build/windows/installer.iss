@@ -35,9 +35,54 @@
 ; the repository root, it writes it to dist\<id>_windows_amd64_<goamd64>\.
 ; ---------------------------------------------------------------------------
 
+; BinaryDir resolution.
+;
+; The binary lives in a different place depending on how it was built, so the
+; script looks for it instead of assuming. Order of preference:
+;
+;   1. /DBinaryDir=<dir> passed on the command line   (what CI does)
+;   2. dist\installer-input\                          (a staged copy)
+;   3. dist\*windows_amd64*\                          (GoReleaser output)
+;   4. the repository root                            (plain go build)
+;
+; SourcePath is an ISPP built-in holding this .iss file's own directory, with a
+; trailing backslash. Using it keeps detection independent of the directory
+; iscc happens to be invoked from.
 #ifndef BinaryDir
-  #define BinaryDir "..\.."
+  #define RepoRoot SourcePath + "..\.."
+
+  #if FileExists(RepoRoot + "\dist\installer-input\" + AppExeName)
+    #define BinaryDir RepoRoot + "\dist\installer-input"
+  #elif FileExists(RepoRoot + "\" + AppExeName)
+    #define BinaryDir RepoRoot
+  #else
+    ; GoReleaser writes the binary to dist\<id>_windows_amd64_<goamd64>\ and
+    ; the archive to dist\<project>_<version>_windows_amd64.zip. Both live in
+    ; dist, so the mask has to separate them.
+    ;
+    ; Two guards, because ISPP's FindFirst inherits a Delphi quirk: the
+    ; attribute argument means "also include directories", not "only
+    ; directories", so plain files match regardless of what is passed.
+    ;
+    ;   1. The mask requires an underscore AFTER amd64, which the directory has
+    ;      (..._windows_amd64_v1) and the archive does not (...amd64.zip).
+    ;   2. The candidate is accepted only if it actually contains the binary.
+    #define FindHandle FindFirst(RepoRoot + "\dist\*_windows_amd64_*", 16)
+    #if FindHandle
+      #define Candidate RepoRoot + "\dist\" + FindGetFileName(FindHandle)
+      #expr FindClose(FindHandle)
+      #if FileExists(Candidate + "\" + AppExeName)
+        #define BinaryDir Candidate
+      #endif
+    #endif
+  #endif
 #endif
+
+#ifndef BinaryDir
+  #error Could not find git-persona.exe. Build it first with "go build -o git-persona.exe .\cmd\git-persona" or "goreleaser release --snapshot --clean", or pass /DBinaryDir=<directory>.
+#endif
+
+#pragma message "installer: taking " + AppExeName + " from " + BinaryDir
 
 #ifndef AppVersion
   #define AppVersion "0.0.0-dev"
