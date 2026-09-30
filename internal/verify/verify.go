@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Dkavila/git-persona/internal/config"
-	"github.com/Dkavila/git-persona/internal/ssh"
+	"github.com/Dkavila/git-pilot/internal/config"
+	"github.com/Dkavila/git-pilot/internal/ssh"
 )
 
 // Status is the outcome of one profile's probe.

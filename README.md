@@ -1,12 +1,12 @@
 <p align="center">
-  <strong>git-persona</strong><br>
+  <strong>git-pilot</strong><br>
   <em>Switch between multiple Git and SSH identities without ever touching <code>~/.ssh/config</code>.</em>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Dkavila/git-persona/actions/workflows/ci.yml"><img src="https://github.com/Dkavila/git-persona/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://pkg.go.dev/github.com/Dkavila/git-persona"><img src="https://pkg.go.dev/badge/github.com/Dkavila/git-persona.svg" alt="Go Reference"></a>
-  <a href="https://github.com/Dkavila/git-persona/releases/latest"><img src="https://img.shields.io/github/v/release/Dkavila/git-persona" alt="Release"></a>
+  <a href="https://github.com/Dkavila/git-pilot/actions/workflows/ci.yml"><img src="https://github.com/Dkavila/git-pilot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://pkg.go.dev/github.com/Dkavila/git-pilot"><img src="https://pkg.go.dev/badge/github.com/Dkavila/git-pilot.svg" alt="Go Reference"></a>
+  <a href="https://github.com/Dkavila/git-pilot/releases/latest"><img src="https://img.shields.io/github/v/release/Dkavila/git-pilot" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
 </p>
 
@@ -21,15 +21,15 @@
 ---
 
 ```console
-$ git-persona list
+$ git-pilot list
    NAME      EMAIL              KEY
 *  work      dev@acme-corp.com  ~/.ssh/id_ed25519_work
    personal  me@example.com     ~/.ssh/id_ed25519_personal
 
-$ git-persona use personal
+$ git-pilot use personal
 Now using "personal" (me@example.com)
 
-$ git-persona verify
+$ git-pilot verify
 STATUS   PROFILE   ACCOUNT   TOOK
 OK       work      acme-bot  412ms
 OK       personal  octocat   389ms
@@ -47,7 +47,7 @@ under the wrong name.
 
 ## How it works
 
-`git-persona` never touches `~/.ssh/config` and never rewrites a remote. It
+`git-pilot` never touches `~/.ssh/config` and never rewrites a remote. It
 writes three keys into your **global** Git config:
 
 ```ini
@@ -69,8 +69,8 @@ ed25519 key pair, generated on `add`.
 
 ### Windows
 
-Download `GitPersona_Installer.exe` from the
-[latest release](https://github.com/Dkavila/git-persona/releases/latest).
+Download `GitPilot_Installer.exe` from the
+[latest release](https://github.com/Dkavila/git-pilot/releases/latest).
 
 It installs per-user — no administrator prompt — adds itself to your `PATH`,
 and provides the short alias `gitp`.
@@ -78,14 +78,14 @@ and provides the short alias `gitp`.
 ### Go toolchain (any platform)
 
 ```console
-go install github.com/Dkavila/git-persona/cmd/git-persona@latest
+go install github.com/Dkavila/git-pilot/cmd/git-pilot@latest
 ```
 
 ### From source
 
 ```console
-git clone https://github.com/Dkavila/git-persona.git
-cd git-persona
+git clone https://github.com/Dkavila/git-pilot.git
+cd git-pilot
 make build
 ```
 
@@ -94,13 +94,13 @@ Requires Go 1.27+, plus `git` and `ssh-keygen` on your `PATH`.
 ## Commands
 
 ```console
-$ git-persona --help
-git-persona switches Git identities by writing user.name, user.email
+$ git-pilot --help
+git-pilot switches Git identities by writing user.name, user.email
 and core.sshCommand into your global Git config, so your ~/.ssh/config
 is never touched.
 
 Usage:
-  git-persona [command]
+  git-pilot [command]
 
 Available Commands:
   add         Register a new profile and generate its ed25519 key
@@ -125,7 +125,7 @@ Available Commands:
 ### `add`
 
 ```console
-$ git-persona add
+$ git-pilot add
 Profile name: personal
 Git email: me@example.com
 
@@ -136,10 +136,10 @@ Add this public key to your Git provider:
 
 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... me@example.com
 
-Then run: git-persona use personal
+Then run: git-pilot use personal
 ```
 
-Non-interactive: `git-persona add --name work --email dev@acme-corp.com`.
+Non-interactive: `git-pilot add --name work --email dev@acme-corp.com`.
 
 `add` only registers the profile — it does not switch to it.
 
@@ -169,14 +169,14 @@ that is already registered with a provider.
 ### `use`
 
 ```console
-$ git-persona use work
+$ git-pilot use work
 Now using "work" (dev@acme-corp.com)
 ```
 
 ### `list`
 
 ```console
-$ git-persona list
+$ git-pilot list
    NAME      EMAIL              KEY
 *  work      dev@acme-corp.com  /home/user/.ssh/id_ed25519_work
    personal  me@example.com     /home/user/.ssh/id_ed25519_personal
@@ -188,7 +188,7 @@ Probes every registered profile against GitHub **concurrently**, so checking
 ten identities takes about as long as the slowest one rather than the sum.
 
 ```console
-$ git-persona verify
+$ git-pilot verify
 STATUS   PROFILE   ACCOUNT   TOOK
 OK       work      acme-bot  412ms
 DENIED   personal  -         389ms
@@ -206,10 +206,10 @@ A repository with its own `user.email` in `.git/config` ignores whatever you
 set globally. `clean` unsets the three local keys:
 
 ```console
-$ git-persona clean                      # current directory
+$ git-pilot clean                      # current directory
 Cleared local identity in .
 
-$ git-persona clean ~/code/old-project
+$ git-pilot clean ~/code/old-project
 Cleared local identity in /home/user/code/old-project
 ```
 
@@ -218,7 +218,7 @@ Idempotent — cleaning an already-clean repository succeeds.
 ### `remove`
 
 ```console
-$ git-persona remove personal
+$ git-pilot remove personal
 Removed profile "personal".
 Its SSH key was kept at: /home/user/.ssh/id_ed25519_personal
 Re-run with --purge-key to delete it, or remove it yourself.
@@ -235,7 +235,7 @@ config, so Git is never left pointing at an identity that no longer exists.
 Repairs the authorship of commits made under the wrong persona.
 
 ```console
-$ git-persona rewrite personal --from dev@acme-corp.com
+$ git-pilot rewrite personal --from dev@acme-corp.com
 Would rewrite 5 of 30 commits on main to "personal <me@example.com>"
 
 COMMIT    SUBJECT                                     CURRENT AUTHOR
@@ -251,7 +251,7 @@ commit, `--range` limits the scope. With none of them, every commit in the
 range is rewritten.
 
 **It is a dry run unless `--apply` is passed.** Applying records the original
-head under `refs/git-persona/backup/<timestamp>` and prints both the
+head under `refs/git-pilot/backup/<timestamp>` and prints both the
 `git push --force-with-lease` needed to publish and the `git reset --hard`
 needed to undo.
 
@@ -264,15 +264,15 @@ needed to undo.
 
 | Path | What |
 |---|---|
-| `~/.git-persona/profiles.json` | Profile store, `0600`, inside a `0700` directory |
+| `~/.git-pilot/profiles.json` | Profile store, `0600`, inside a `0700` directory |
 | `~/.ssh/id_ed25519_<profile>` | One key pair per profile |
 | Global `.gitconfig` | Where the active identity is applied |
-| `refs/git-persona/backup/*` | Pre-rewrite history, local only |
+| `refs/git-pilot/backup/*` | Pre-rewrite history, local only |
 
 ## Design notes
 
 ```
-cmd/git-persona/     entry point and composition root
+cmd/git-pilot/     entry point and composition root
 internal/cli/        cobra commands
 internal/config/     profile model and JSON store
 internal/git/        global apply, local unset
@@ -284,7 +284,7 @@ internal/rewrite/    commit authorship rewriting
 Every package that touches the outside world sits behind a small interface —
 `git.Runner`, `ssh.Runner`, `verify.Prober`, `rewrite.Runner` — so the entire
 suite runs without spawning `git`, calling `ssh-keygen`, or opening a socket.
-`cmd/git-persona/main.go` is the only place the real binaries are bound.
+`cmd/git-pilot/main.go` is the only place the real binaries are bound.
 
 ### Concurrent verification
 
@@ -317,7 +317,7 @@ the common path pays nothing for the feature.
 
 `rewrite` uses Git plumbing rather than `filter-branch` (deprecated by Git
 itself, needs a POSIX shell) or `filter-repo` (an external Python script, which
-would stop `git-persona` being a self-contained binary).
+would stop `git-pilot` being a self-contained binary).
 
 Commits are read with `rev-list` and `show`, rebuilt with `commit-tree`, and
 the branch is moved with the compare-and-swap form of `update-ref`. Every

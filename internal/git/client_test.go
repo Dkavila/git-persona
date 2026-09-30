@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Dkavila/git-persona/internal/config"
-	"github.com/Dkavila/git-persona/internal/git"
+	"github.com/Dkavila/git-pilot/internal/config"
+	"github.com/Dkavila/git-pilot/internal/git"
 )
 
 // fakeRunner records every argv it is handed and replays scripted results, so
@@ -107,8 +107,8 @@ func TestSSHCommand_Format(t *testing.T) {
 // separators are normalised to forward slashes, which Git and OpenSSH both
 // accept on Windows.
 func TestSSHCommand_NormalisesWindowsPath(t *testing.T) {
-	got := git.SSHCommand(`C:\Users\git-persona\.ssh\id_ed25519_work`)
-	want := `ssh -i "C:/Users/git-persona/.ssh/id_ed25519_work" -o IdentitiesOnly=yes`
+	got := git.SSHCommand(`C:\Users\git-pilot\.ssh\id_ed25519_work`)
+	want := `ssh -i "C:/Users/git-pilot/.ssh/id_ed25519_work" -o IdentitiesOnly=yes`
 
 	if got != want {
 		t.Fatalf("SSHCommand() = %q, want %q", got, want)

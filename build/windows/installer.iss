@@ -1,5 +1,5 @@
 ; ---------------------------------------------------------------------------
-;  Inno Setup script for git-persona.
+;  Inno Setup script for git-pilot.
 ;
 ;  Produces a per-user installer: it writes to the user's own program folder
 ;  and to HKEY_CURRENT_USER, so no UAC elevation and no administrator is
@@ -7,15 +7,15 @@
 ;  which is the correct scope for a personal developer tool.
 ;
 ;  Build:  iscc build\windows\installer.iss
-;  Expects git-persona.exe to already exist at the repository root:
-;      go build -o git-persona.exe .\cmd\git-persona
+;  Expects git-pilot.exe to already exist at the repository root:
+;      go build -o git-pilot.exe .\cmd\git-pilot
 ; ---------------------------------------------------------------------------
 
-#define AppName        "Git Persona"
-#define AppShortName   "git-persona"
-#define AppPublisher   "Git Persona"
-#define AppURL         "https://github.com/Dkavila/git-persona"
-#define AppExeName     "git-persona.exe"
+#define AppName        "Git Pilot"
+#define AppShortName   "git-pilot"
+#define AppPublisher   "Git Pilot"
+#define AppURL         "https://github.com/Dkavila/git-pilot"
+#define AppExeName     "git-pilot.exe"
 #define AliasName      "gitp.cmd"
 
 ; --- Overridable from the command line -------------------------------------
@@ -28,7 +28,7 @@
 ;   iscc /DBinaryDir=C:\path\to\dist\installer-input ^
 ;        /DAppVersion=1.2.3 ^
 ;        /DOutputDir=C:\path\to\dist\installer ^
-;        /DOutputBaseFilename=GitPersona_Installer ^
+;        /DOutputBaseFilename=GitPilot_Installer ^
 ;        build\windows\installer.iss
 ;
 ; BinaryDir is the one that matters: GoReleaser does not write the binary to
@@ -86,7 +86,7 @@
 #endif
 
 #ifndef BinaryDir
-  #error Could not find git-persona.exe. Build it first with "go build -o git-persona.exe .\cmd\git-persona" or "goreleaser release --snapshot --clean", or pass /DBinaryDir=<directory>.
+  #error Could not find git-pilot.exe. Build it first with "go build -o git-pilot.exe .\cmd\git-pilot" or "goreleaser release --snapshot --clean", or pass /DBinaryDir=<directory>.
 #endif
 
 #pragma message "installer: taking " + AppExeName + " from " + BinaryDir
@@ -108,7 +108,7 @@
 #endif
 
 #ifndef OutputBaseFilename
-  #define OutputBaseFilename "GitPersona_Installer"
+  #define OutputBaseFilename "GitPilot_Installer"
 #endif
 
 [Setup]
@@ -208,8 +208,8 @@ end;
 { NeedsAddPath reports whether Param is absent from the per-user PATH.
 
   The comparison wraps both the needle and the haystack in semicolons, so that
-  "C:\Tools\Git Persona" is never considered present merely because
-  "C:\Tools\Git Persona Extra" is. Case is folded because Windows paths are
+  "C:\Tools\Git Pilot" is never considered present merely because
+  "C:\Tools\Git Pilot Extra" is. Case is folded because Windows paths are
   case insensitive, and a trailing backslash is normalised away because
   "C:\X" and "C:\X\" denote the same directory. }
 function NeedsAddPath(Param: string): Boolean;
@@ -287,4 +287,4 @@ Filename: "{app}\{#AppExeName}"; Parameters: "--version"; \
     Flags: postinstall runhidden skipifsilent
 
 [Messages]
-FinishedLabel=Setup has installed [name] on your computer.%n%nOpen a NEW terminal and run "git-persona --help" or the short alias "gitp --help". An already open terminal will not see the updated PATH.
+FinishedLabel=Setup has installed [name] on your computer.%n%nOpen a NEW terminal and run "git-pilot --help" or the short alias "gitp --help". An already open terminal will not see the updated PATH.

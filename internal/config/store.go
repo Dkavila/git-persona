@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	dirName  = ".git-persona"
+	dirName  = ".git-pilot"
 	fileName = "profiles.json"
 
 	// The store sits next to SSH key material, so it is owner-only.

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Dkavila/git-persona/internal/rewrite"
+	"github.com/Dkavila/git-pilot/internal/rewrite"
 )
 
 // metaFormat is the exact --format string the implementation must use. NUL
@@ -451,8 +451,8 @@ func TestApply_CreatesABackupRefBeforeMovingTheBranch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Apply() = %v, want nil", err)
 	}
-	if !strings.HasPrefix(backup, "refs/git-persona/backup/") {
-		t.Fatalf("backup ref = %q, want it under refs/git-persona/backup/", backup)
+	if !strings.HasPrefix(backup, "refs/git-pilot/backup/") {
+		t.Fatalf("backup ref = %q, want it under refs/git-pilot/backup/", backup)
 	}
 	if g.refs[backup] != "ccc333" {
 		t.Fatalf("backup points at %q, want the original head ccc333", g.refs[backup])

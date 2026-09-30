@@ -1,4 +1,4 @@
-module github.com/Dkavila/git-persona
+module github.com/Dkavila/git-pilot
 
 go 1.27.1
 

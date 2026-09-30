@@ -1,5 +1,5 @@
-BINARY   := git-persona
-CMD      := ./cmd/git-persona
+BINARY   := git-pilot
+CMD      := ./cmd/git-pilot
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS  := -X main.version=$(VERSION)
 

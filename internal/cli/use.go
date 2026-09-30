@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Dkavila/git-persona/internal/config"
+	"github.com/Dkavila/git-pilot/internal/config"
 )
 
 func newUseCmd(d Deps) *cobra.Command {

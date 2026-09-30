@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Dkavila/git-persona/internal/config"
+	"github.com/Dkavila/git-pilot/internal/config"
 )
 
 // fixedTime keeps round-trip comparisons deterministic. Never use time.Now()
@@ -37,7 +37,7 @@ func TestProfileValidate(t *testing.T) {
 		{"whitespace name", sampleProfile("   ", "d@corp.com"), true},
 		{"empty email", sampleProfile("work", ""), true},
 		{"malformed email", sampleProfile("work", "not-an-email"), true},
-		{"email without domain", sampleProfile("work", "git-persona@"), true},
+		{"email without domain", sampleProfile("work", "git-pilot@"), true},
 		{"name with forward slash", sampleProfile("work/eu", "d@corp.com"), true},
 		{"name with backslash", sampleProfile("work\\eu", "d@corp.com"), true},
 	}
@@ -63,7 +63,7 @@ func TestProfileValidate(t *testing.T) {
 
 func TestStorePath(t *testing.T) {
 	home := filepath.Join("/tmp", "fakehome")
-	want := filepath.Join(home, ".git-persona", "profiles.json")
+	want := filepath.Join(home, ".git-pilot", "profiles.json")
 
 	if got := config.StorePath(home); got != want {
 		t.Fatalf("StorePath() = %q, want %q", got, want)
@@ -252,7 +252,7 @@ func TestSetActive_UpdatesActiveField(t *testing.T) {
 	if err := store.Add(sampleProfile("work", "dev@acme-corp.com")); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	if err := store.Add(sampleProfile("personal", "git-persona@gmail.com")); err != nil {
+	if err := store.Add(sampleProfile("personal", "git-pilot@gmail.com")); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 
@@ -304,7 +304,7 @@ func TestRemove(t *testing.T) {
 		if err := store.Add(sampleProfile("work", "dev@acme-corp.com")); err != nil {
 			t.Fatalf("setup: %v", err)
 		}
-		if err := store.Add(sampleProfile("personal", "git-persona@gmail.com")); err != nil {
+		if err := store.Add(sampleProfile("personal", "git-pilot@gmail.com")); err != nil {
 			t.Fatalf("setup: %v", err)
 		}
 		if err := store.SetActive("work"); err != nil {
@@ -330,7 +330,7 @@ func TestRemove(t *testing.T) {
 		if err := store.Add(sampleProfile("work", "dev@acme-corp.com")); err != nil {
 			t.Fatalf("setup: %v", err)
 		}
-		if err := store.Add(sampleProfile("personal", "git-persona@gmail.com")); err != nil {
+		if err := store.Add(sampleProfile("personal", "git-pilot@gmail.com")); err != nil {
 			t.Fatalf("setup: %v", err)
 		}
 		if err := store.SetActive("work"); err != nil {

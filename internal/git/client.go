@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Dkavila/git-persona/internal/config"
+	"github.com/Dkavila/git-pilot/internal/config"
 )
 
 // Exit codes returned by the git binary that carry meaning for this package.

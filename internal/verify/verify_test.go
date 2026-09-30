@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Dkavila/git-persona/internal/config"
-	"github.com/Dkavila/git-persona/internal/ssh"
-	"github.com/Dkavila/git-persona/internal/verify"
+	"github.com/Dkavila/git-pilot/internal/config"
+	"github.com/Dkavila/git-pilot/internal/ssh"
+	"github.com/Dkavila/git-pilot/internal/verify"
 )
 
 // fakeProber simulates a network probe. It records concurrency so the tests

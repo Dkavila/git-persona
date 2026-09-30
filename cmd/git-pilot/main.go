@@ -1,4 +1,4 @@
-// Command git-persona manages and switches between multiple Git and SSH
+// Command git-pilot manages and switches between multiple Git and SSH
 // identities by injecting them directly into the global Git configuration.
 package main
 
@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Dkavila/git-persona/internal/cli"
-	"github.com/Dkavila/git-persona/internal/git"
-	"github.com/Dkavila/git-persona/internal/rewrite"
-	"github.com/Dkavila/git-persona/internal/ssh"
+	"github.com/Dkavila/git-pilot/internal/cli"
+	"github.com/Dkavila/git-pilot/internal/git"
+	"github.com/Dkavila/git-pilot/internal/rewrite"
+	"github.com/Dkavila/git-pilot/internal/ssh"
 )
 
 // version is injected at build time via -ldflags "-X main.version=...".

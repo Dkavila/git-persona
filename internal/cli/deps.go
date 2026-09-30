@@ -6,9 +6,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/Dkavila/git-persona/internal/config"
-	"github.com/Dkavila/git-persona/internal/rewrite"
-	"github.com/Dkavila/git-persona/internal/verify"
+	"github.com/Dkavila/git-pilot/internal/config"
+	"github.com/Dkavila/git-pilot/internal/rewrite"
+	"github.com/Dkavila/git-pilot/internal/verify"
 )
 
 // GitClient is the slice of the git layer the CLI needs. It is declared here,
@@ -35,7 +35,7 @@ type Rewriter interface {
 
 // Deps carries everything the command tree needs from the outside world.
 type Deps struct {
-	// Home is the user's home directory, holding .git-persona and .ssh.
+	// Home is the user's home directory, holding .git-pilot and .ssh.
 	Home string
 	Git  GitClient
 	Keys KeyManager
@@ -44,7 +44,7 @@ type Deps struct {
 	Prober verify.Prober
 	// Rewriter changes commit authorship. It is keyed by repository path
 	// rather than bound at construction, because rewrite operates on whatever
-	// repository the user points at, not on the one git-persona lives in.
+	// repository the user points at, not on the one git-pilot lives in.
 	Rewriter Rewriter
 	// Now supplies timestamps; injectable so tests are deterministic.
 	Now func() time.Time

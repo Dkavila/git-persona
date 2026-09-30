@@ -42,9 +42,9 @@ jobs:
         shell: pwsh
         run: |
           # GoReleaser writes each build to a directory encoding the target,
-          # e.g. dist\git-persona_windows_amd64_v1\git-persona.exe. That _v1
+          # e.g. dist\git-pilot_windows_amd64_v1\git-pilot.exe. That _v1
           # suffix comes from GOAMD64 and can change, so discover the path.
-          $binary = Get-ChildItem -Path dist -Recurse -Filter 'git-persona.exe' |
+          $binary = Get-ChildItem -Path dist -Recurse -Filter 'git-pilot.exe' |
                     Where-Object { $_.DirectoryName -match 'windows_amd64' } |
                     Select-Object -First 1
 
@@ -94,7 +94,7 @@ jobs:
             "/DAppVersion=$version" `
             "/DVersionInfo=$numeric" `
             "/DOutputDir=$output" `
-            "/DOutputBaseFilename=GitPersona_Installer" `
+            "/DOutputBaseFilename=GitPilot_Installer" `
             "build\windows\installer.iss"
 
           if ($LASTEXITCODE -ne 0) { throw "iscc failed with exit code $LASTEXITCODE" }
@@ -105,7 +105,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${{ github.ref_name }}" `
-            "dist\installer\GitPersona_Installer.exe" --clobber
+            "dist\installer\GitPilot_Installer.exe" --clobber
 
       - name: Upload build artifacts on failure
         if: failure()

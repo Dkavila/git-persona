@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Dkavila/git-persona/internal/config"
-	"github.com/Dkavila/git-persona/internal/ssh"
+	"github.com/Dkavila/git-pilot/internal/config"
+	"github.com/Dkavila/git-pilot/internal/ssh"
 )
 
 // recoveryPrompt is the exact question shown when a key already exists. The
@@ -88,7 +88,7 @@ func runAdd(cmd *cobra.Command, d Deps, name, email string) error {
 	if pub, err := ssh.PublicKey(keyPath); err == nil {
 		fmt.Fprintf(out, "\nAdd this public key to your Git provider:\n\n%s\n", pub)
 	}
-	fmt.Fprintf(out, "\nThen run: git-persona use %s\n", name)
+	fmt.Fprintf(out, "\nThen run: git-pilot use %s\n", name)
 	return nil
 }
 

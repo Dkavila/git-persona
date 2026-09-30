@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Dkavila/git-persona/internal/ssh"
+	"github.com/Dkavila/git-pilot/internal/ssh"
 )
 
 // fakeRunner records argv and replays a scripted result, so no test in this
@@ -48,7 +48,7 @@ func TestSlug(t *testing.T) {
 }
 
 func TestKeyPathFor(t *testing.T) {
-	home := filepath.Join("/home", "git-persona")
+	home := filepath.Join("/home", "git-pilot")
 	want := filepath.Join(home, ".ssh", "id_ed25519_work-profile")
 
 	if got := ssh.KeyPathFor(home, "Work Profile"); got != want {
@@ -181,9 +181,9 @@ func TestParseProbeOutput(t *testing.T) {
 		},
 		{
 			name:         "success with surrounding noise",
-			out:          "Warning: Permanently added 'github.com' to the list of known hosts.\nHi git-persona-work! You've successfully authenticated, but GitHub does not provide shell access.\n",
+			out:          "Warning: Permanently added 'github.com' to the list of known hosts.\nHi git-pilot-work! You've successfully authenticated, but GitHub does not provide shell access.\n",
 			wantAuth:     true,
-			wantUsername: "git-persona-work",
+			wantUsername: "git-pilot-work",
 		},
 		{
 			name:         "permission denied",

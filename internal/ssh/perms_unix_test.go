@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Dkavila/git-persona/internal/ssh"
+	"github.com/Dkavila/git-pilot/internal/ssh"
 )
 
 // Unix-only: Windows has no POSIX mode bits. See the equivalent note in

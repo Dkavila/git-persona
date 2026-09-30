@@ -1,4 +1,4 @@
-# GoReleaser configuration for git-persona.
+# GoReleaser configuration for git-pilot.
 #
 # Local sanity check (no publishing, no tag required):
 #   goreleaser check
@@ -7,7 +7,7 @@
 # Released for real by .github/workflows/release.yml on a v* tag.
 version: 2
 
-project_name: git-persona
+project_name: git-pilot
 
 before:
   hooks:
@@ -16,9 +16,9 @@ before:
     - go mod download
 
 builds:
-  - id: git-persona
-    main: ./cmd/git-persona
-    binary: git-persona
+  - id: git-pilot
+    main: ./cmd/git-pilot
+    binary: git-pilot
 
     env:
       # Static binaries. Nothing here needs cgo, and disabling it is what makes
@@ -35,7 +35,7 @@ builds:
 
     ldflags:
       # -s -w strip the symbol table and DWARF data.
-      # main.version is the variable declared in cmd/git-persona/main.go.
+      # main.version is the variable declared in cmd/git-pilot/main.go.
       - -s -w -X main.version={{ .Version }}
 
     # Reproducible builds: stamp binaries with the commit time rather than the
@@ -83,7 +83,7 @@ release:
   footer: |
     ---
 
-    **Windows users:** `GitPersona_Installer.exe` below is a classic GUI
+    **Windows users:** `GitPilot_Installer.exe` below is a classic GUI
     installer. It adds the install directory to your user PATH and provides the
     short `gitp` alias. The `.zip` archive is the portable alternative.
 
@@ -99,7 +99,7 @@ release:
 #       owner: Dkavila
 #       name: scoop-bucket
 #       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-#     homepage: https://github.com/Dkavila/git-persona
+#     homepage: https://github.com/Dkavila/git-pilot
 #     description: Manage and switch between multiple Git and SSH identities
 #     license: MIT
 #
@@ -108,8 +108,8 @@ release:
 #       owner: Dkavila
 #       name: homebrew-tap
 #       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-#     homepage: https://github.com/Dkavila/git-persona
+#     homepage: https://github.com/Dkavila/git-pilot
 #     description: Manage and switch between multiple Git and SSH identities
 #     license: MIT
 #     test: |
-#       system "#{bin}/git-persona", "--version"
+#       system "#{bin}/git-pilot", "--version"

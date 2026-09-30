@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Dkavila/git-persona/internal/config"
-	"github.com/Dkavila/git-persona/internal/ssh"
+	"github.com/Dkavila/git-pilot/internal/config"
+	"github.com/Dkavila/git-pilot/internal/ssh"
 )
 
 func newRemoveCmd(d Deps) *cobra.Command {
@@ -80,7 +80,7 @@ func runRemove(cmd *cobra.Command, d Deps, name string, purgeKey bool) error {
 	if wasActive {
 		fmt.Fprintf(out, "\nWarning: %q was the active profile. user.name, user.email and\n", profile.Name)
 		fmt.Fprintln(out, "core.sshCommand have been unset from your global Git config.")
-		fmt.Fprintln(out, `Run "git-persona use <profile>" to select another identity.`)
+		fmt.Fprintln(out, `Run "git-pilot use <profile>" to select another identity.`)
 	}
 	return nil
 }

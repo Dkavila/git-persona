@@ -13,10 +13,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Dkavila/git-persona/internal/cli"
-	"github.com/Dkavila/git-persona/internal/config"
-	"github.com/Dkavila/git-persona/internal/rewrite"
-	"github.com/Dkavila/git-persona/internal/ssh"
+	"github.com/Dkavila/git-pilot/internal/cli"
+	"github.com/Dkavila/git-pilot/internal/config"
+	"github.com/Dkavila/git-pilot/internal/rewrite"
+	"github.com/Dkavila/git-pilot/internal/ssh"
 )
 
 var fixedTime = time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
@@ -191,7 +191,7 @@ func TestAddCmd_NonInteractiveFlags(t *testing.T) {
 	home := t.TempDir()
 	k := &fakeKeys{}
 	root, _ := newTestCmd(t, home, &fakeGit{}, k, "")
-	root.SetArgs([]string{"add", "--name", "personal", "--email", "git-persona@gmail.com"})
+	root.SetArgs([]string{"add", "--name", "personal", "--email", "git-pilot@gmail.com"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() = %v, want nil", err)
@@ -286,7 +286,7 @@ func TestAddCmd_DoesNotChangeActiveProfile(t *testing.T) {
 
 	g := &fakeGit{}
 	root, _ := newTestCmd(t, home, g, &fakeKeys{}, "")
-	root.SetArgs([]string{"add", "--name", "personal", "--email", "git-persona@gmail.com"})
+	root.SetArgs([]string{"add", "--name", "personal", "--email", "git-pilot@gmail.com"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() = %v, want nil", err)
@@ -305,7 +305,7 @@ func TestUseCmd_AppliesProfileAndPersistsActive(t *testing.T) {
 	home := t.TempDir()
 	seedStore(t, home, []config.Profile{
 		profile("work", "dev@acme-corp.com"),
-		profile("personal", "git-persona@gmail.com"),
+		profile("personal", "git-pilot@gmail.com"),
 	}, "work")
 
 	g := &fakeGit{}
@@ -319,7 +319,7 @@ func TestUseCmd_AppliesProfileAndPersistsActive(t *testing.T) {
 	if len(g.applied) != 1 {
 		t.Fatalf("git applies = %d, want 1", len(g.applied))
 	}
-	if g.applied[0].Name != "personal" || g.applied[0].Email != "git-persona@gmail.com" {
+	if g.applied[0].Name != "personal" || g.applied[0].Email != "git-pilot@gmail.com" {
 		t.Fatalf("applied = %+v, want the personal profile", g.applied[0])
 	}
 
@@ -355,7 +355,7 @@ func TestUseCmd_DoesNotPersistWhenApplyFails(t *testing.T) {
 	home := t.TempDir()
 	seedStore(t, home, []config.Profile{
 		profile("work", "dev@acme-corp.com"),
-		profile("personal", "git-persona@gmail.com"),
+		profile("personal", "git-pilot@gmail.com"),
 	}, "work")
 
 	g := &fakeGit{err: errors.New("git exploded")}
@@ -385,7 +385,7 @@ func TestListCmd_MarksActive(t *testing.T) {
 	home := t.TempDir()
 	seedStore(t, home, []config.Profile{
 		profile("work", "dev@acme-corp.com"),
-		profile("personal", "git-persona@gmail.com"),
+		profile("personal", "git-pilot@gmail.com"),
 	}, "personal")
 
 	root, out := newTestCmd(t, home, &fakeGit{}, &fakeKeys{}, "")
@@ -396,7 +396,7 @@ func TestListCmd_MarksActive(t *testing.T) {
 	}
 
 	got := out.String()
-	for _, want := range []string{"work", "personal", "dev@acme-corp.com", "git-persona@gmail.com"} {
+	for _, want := range []string{"work", "personal", "dev@acme-corp.com", "git-pilot@gmail.com"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q:\n%s", want, got)
 		}
@@ -1151,7 +1151,7 @@ func TestRewriteCmd_ApplyRewrites(t *testing.T) {
 	home := t.TempDir()
 	seedStore(t, home, []config.Profile{profile("personal", "me@example.com")}, "")
 
-	rw := &fakeRewriter{plan: samplePlan(), backupRef: "refs/git-persona/backup/20260930-120000"}
+	rw := &fakeRewriter{plan: samplePlan(), backupRef: "refs/git-pilot/backup/20260930-120000"}
 	root, out := newRewriteCmd(t, home, rw)
 	root.SetArgs([]string{"rewrite", "personal", "--apply"})
 
@@ -1165,7 +1165,7 @@ func TestRewriteCmd_ApplyRewrites(t *testing.T) {
 	got := out.String()
 	// The user has to be told how to recover and how to publish the result,
 	// or the command leaves them stranded.
-	for _, want := range []string{"refs/git-persona/backup/20260930-120000", "force-with-lease", "reset --hard"} {
+	for _, want := range []string{"refs/git-pilot/backup/20260930-120000", "force-with-lease", "reset --hard"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q:\n%s", want, got)
 		}

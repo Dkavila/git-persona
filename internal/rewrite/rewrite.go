@@ -1,15 +1,15 @@
 // Package rewrite changes the authorship of existing commits, replacing an
-// identity that leaked into the history with a registered persona.
+// identity that leaked into the history with a registered pilot.
 //
 // It works through Git's plumbing rather than filter-branch or filter-repo:
 // commits are read with rev-list and show, rebuilt with commit-tree, and the
-// branch is moved with a compare-and-swap update-ref. That keeps git-persona a
+// branch is moved with a compare-and-swap update-ref. That keeps git-pilot a
 // self-contained binary and keeps every step behind the Runner seam, so the
 // suite runs without a real repository.
 //
 // Rewriting is irreversible from Git's point of view: every rebuilt commit
 // gets a new hash, and so does every descendant. Apply therefore records the
-// original head under refs/git-persona/backup/ before moving anything.
+// original head under refs/git-pilot/backup/ before moving anything.
 package rewrite
 
 import (
@@ -31,7 +31,7 @@ import (
 // field with a separator puts that newline in a tenth field nobody reads.
 const metaFormat = "%T%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%B%x00"
 
-const backupPrefix = "refs/git-persona/backup/"
+const backupPrefix = "refs/git-pilot/backup/"
 
 var (
 	// ErrDirtyWorkingTree reports uncommitted changes. Rewriting with a dirty

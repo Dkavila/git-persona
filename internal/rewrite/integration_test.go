@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Dkavila/git-persona/internal/rewrite"
+	"github.com/Dkavila/git-pilot/internal/rewrite"
 )
 
 // newRepo builds a temporary repository whose commits carry three different

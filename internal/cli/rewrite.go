@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Dkavila/git-persona/internal/config"
-	"github.com/Dkavila/git-persona/internal/rewrite"
+	"github.com/Dkavila/git-pilot/internal/config"
+	"github.com/Dkavila/git-pilot/internal/rewrite"
 )
 
 func newRewriteCmd(d Deps) *cobra.Command {
@@ -24,7 +24,7 @@ func newRewriteCmd(d Deps) *cobra.Command {
 		Use:   "rewrite <profile>",
 		Short: "Rewrite commit authorship to a registered profile",
 		Long: "rewrite replaces the author of existing commits with a registered\n" +
-			"profile's identity, for when the wrong persona was active while\n" +
+			"profile's identity, for when the wrong pilot was active while\n" +
 			"committing.\n\n" +
 			"Selection: --from matches an author email, --commit names a specific\n" +
 			"commit, and --range limits the scope. With none of them, every commit\n" +

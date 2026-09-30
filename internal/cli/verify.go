@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Dkavila/git-persona/internal/config"
-	"github.com/Dkavila/git-persona/internal/verify"
+	"github.com/Dkavila/git-pilot/internal/config"
+	"github.com/Dkavila/git-pilot/internal/verify"
 )
 
 func newVerifyCmd(d Deps) *cobra.Command {
@@ -32,7 +32,7 @@ func newVerifyCmd(d Deps) *cobra.Command {
 				return err
 			}
 			if len(store.Profiles) == 0 {
-				fmt.Fprintln(out, "No profiles yet. Create one with: git-persona add")
+				fmt.Fprintln(out, "No profiles yet. Create one with: git-pilot add")
 				return nil
 			}
 

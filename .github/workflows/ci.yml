@@ -144,5 +144,5 @@ jobs:
             os=${target%/*}
             arch=${target#*/}
             echo "building $os/$arch"
-            GOOS=$os GOARCH=$arch go build -o /dev/null ./cmd/git-persona
+            GOOS=$os GOARCH=$arch go build -o /dev/null ./cmd/git-pilot
           done

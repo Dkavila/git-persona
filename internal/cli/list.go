@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Dkavila/git-persona/internal/config"
+	"github.com/Dkavila/git-pilot/internal/config"
 )
 
 func newListCmd(d Deps) *cobra.Command {
@@ -26,7 +26,7 @@ func newListCmd(d Deps) *cobra.Command {
 			// An empty store is a normal first-run state, so it gets a hint
 			// rather than an error or a blank screen.
 			if len(store.Profiles) == 0 {
-				fmt.Fprintln(out, "No profiles yet. Create one with: git-persona add")
+				fmt.Fprintln(out, "No profiles yet. Create one with: git-pilot add")
 				return nil
 			}
 

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Dkavila/git-persona/internal/config"
+	"github.com/Dkavila/git-pilot/internal/config"
 )
 
 // Unix-only: Windows does not implement POSIX permission bits. os.Chmod there
@@ -28,7 +28,7 @@ func TestSave_CreatesDirWithPerms(t *testing.T) {
 		t.Fatalf("Save() = %v, want nil", err)
 	}
 
-	dirInfo, err := os.Stat(filepath.Join(home, ".git-persona"))
+	dirInfo, err := os.Stat(filepath.Join(home, ".git-pilot"))
 	if err != nil {
 		t.Fatalf("stat config dir: %v", err)
 	}
