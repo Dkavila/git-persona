@@ -48,12 +48,18 @@
 ; SourcePath is an ISPP built-in holding this .iss file's own directory, with a
 ; trailing backslash. Using it keeps detection independent of the directory
 ; iscc happens to be invoked from.
-#ifndef BinaryDir
-  #define RepoRoot SourcePath + "..\.."
+; RepoRoot is defined unconditionally, outside the #ifndef below, and the
+; detection uses nested #if/#else rather than #elif. Both work around the same
+; ISPP bug: it evaluates the #elif of a block it is skipping, so when CI passes
+; /DBinaryDir the skipped branch still errored on identifiers that the skipped
+; #define never created.
+#define RepoRoot SourcePath + "..\.."
 
+#ifndef BinaryDir
   #if FileExists(RepoRoot + "\dist\installer-input\" + AppExeName)
     #define BinaryDir RepoRoot + "\dist\installer-input"
-  #elif FileExists(RepoRoot + "\" + AppExeName)
+  #else
+  #if FileExists(RepoRoot + "\" + AppExeName)
     #define BinaryDir RepoRoot
   #else
     ; GoReleaser writes the binary to dist\<id>_windows_amd64_<goamd64>\ and
@@ -75,6 +81,7 @@
         #define BinaryDir Candidate
       #endif
     #endif
+  #endif
   #endif
 #endif
 
