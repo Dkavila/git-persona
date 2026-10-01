@@ -59,24 +59,9 @@ jobs:
 
           "INNO_BINARY_DIR=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Locate the Inno Setup compiler
-        shell: pwsh
-        run: |
-          # Inno Setup ships with the windows-latest image, but the docs do not
-          # promise ISCC.exe is on PATH, so fall back to known locations.
-          $iscc = (Get-Command iscc.exe -ErrorAction SilentlyContinue)?.Source
-
-          if (-not $iscc) {
-            $candidates = @(
-              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-              "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
-            )
-            $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-          }
-
-          if (-not $iscc) { throw 'ISCC.exe not found on this runner image.' }
-
-          "ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Install Inno Setup
+        id: inno
+        uses: ./.github/actions/inno-setup
 
       - name: Build the Inno Setup installer
         shell: pwsh
@@ -89,7 +74,7 @@ jobs:
           $numeric = ($version -split '-')[0]
 
           $output  = Join-Path $PWD 'dist\installer'
-          & "$env:ISCC" `
+          & "${{ steps.inno.outputs.iscc }}" `
             "/DBinaryDir=$env:INNO_BINARY_DIR" `
             "/DAppVersion=$version" `
             "/DVersionInfo=$numeric" `

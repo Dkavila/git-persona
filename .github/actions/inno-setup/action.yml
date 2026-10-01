@@ -1,0 +1,73 @@
+# Installs a pinned Inno Setup and reports where ISCC.exe landed.
+#
+# Why this exists as an action rather than inline steps:
+#
+#   1. The release workflow and the pull-request check must compile the script
+#      with the SAME compiler. Two copies of the install logic drift, and the
+#      drift is invisible until a release fails.
+#
+#   2. The runner image ships an Inno Setup, but neither its presence nor its
+#      version is promised. Compiling a release artifact with whatever version
+#      the image happens to carry makes the build non-deterministic. The ISPP
+#      #elif bug that broke v0.1.0 is the standing reminder that the compiler
+#      version decides whether the script compiles at all.
+#
+# Pinning also removes the reason the old lookup existed: with a known install
+# directory there is nothing to search for.
+name: Setup Inno Setup
+description: Install a pinned Inno Setup version and output the ISCC.exe path.
+
+inputs:
+  version:
+    description: Inno Setup version to install, as it appears in the release filename.
+    required: false
+    default: "6.7.3"
+
+outputs:
+  iscc:
+    description: Absolute path to ISCC.exe.
+    value: ${{ steps.install.outputs.iscc }}
+
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: pwsh
+      run: |
+        $version = "${{ inputs.version }}"
+
+        # Release tags replace the dots with underscores: 6.7.3 -> is-6_7_3.
+        $tag = "is-" + ($version -replace '\.', '_')
+        $url = "https://github.com/jrsoftware/issrc/releases/download/$tag/innosetup-$version.exe"
+
+        $installer = Join-Path $env:RUNNER_TEMP "innosetup-$version.exe"
+        $dir       = Join-Path $env:RUNNER_TEMP "inno-setup"
+
+        Write-Host "Downloading $url"
+        Invoke-WebRequest -Uri $url -OutFile $installer
+
+        # Inno Setup's own installer is an Inno Setup installer, so it takes the
+        # standard silent switches. /SP- suppresses the "This will install..."
+        # prompt that /VERYSILENT alone leaves in place on some builds.
+        $switches = @(
+          '/VERYSILENT'
+          '/SUPPRESSMSGBOXES'
+          '/NORESTART'
+          '/SP-'
+          "/DIR=$dir"
+        )
+
+        $proc = Start-Process -FilePath $installer -ArgumentList $switches -Wait -PassThru
+        if ($proc.ExitCode -ne 0) {
+          throw "Inno Setup installer exited with code $($proc.ExitCode)"
+        }
+
+        $iscc = Join-Path $dir 'ISCC.exe'
+        if (-not (Test-Path $iscc)) {
+          throw "Inno Setup $version installed, but ISCC.exe is not at $iscc"
+        }
+
+        # Printed so the build log states which compiler produced the artifact.
+        & $iscc /? | Select-Object -First 8
+
+        "iscc=$iscc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
