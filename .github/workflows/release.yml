@@ -59,24 +59,9 @@ jobs:
 
           "INNO_BINARY_DIR=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Locate the Inno Setup compiler
-        shell: pwsh
-        run: |
-          # Inno Setup ships with the windows-latest image, but the docs do not
-          # promise ISCC.exe is on PATH, so fall back to known locations.
-          $iscc = (Get-Command iscc.exe -ErrorAction SilentlyContinue)?.Source
-
-          if (-not $iscc) {
-            $candidates = @(
-              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-              "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
-            )
-            $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-          }
-
-          if (-not $iscc) { throw 'ISCC.exe not found on this runner image.' }
-
-          "ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Install Inno Setup
+        id: inno
+        uses: ./.github/actions/inno-setup
 
       - name: Build the Inno Setup installer
         shell: pwsh
@@ -88,24 +73,57 @@ jobs:
           # tag such as v1.0.0-rc1 has to lose its suffix here.
           $numeric = ($version -split '-')[0]
 
+          # Named like every other asset: git-pilot_<version>_windows_installer.
+          # No architecture in the name, because there is one installer. It is
+          # built x64compatible, so it runs on ARM64 through emulation while
+          # installing the amd64 binary; calling it amd64 would imply an arm64
+          # installer exists.
+          $base    = "git-pilot_${version}_windows_installer"
           $output  = Join-Path $PWD 'dist\installer'
-          & "$env:ISCC" `
+
+          & "${{ steps.inno.outputs.iscc }}" `
             "/DBinaryDir=$env:INNO_BINARY_DIR" `
             "/DAppVersion=$version" `
             "/DVersionInfo=$numeric" `
             "/DOutputDir=$output" `
-            "/DOutputBaseFilename=GitPilot_Installer" `
+            "/DOutputBaseFilename=$base" `
             "build\windows\installer.iss"
 
           if ($LASTEXITCODE -ne 0) { throw "iscc failed with exit code $LASTEXITCODE" }
 
-      - name: Attach the installer to the release
+          "INSTALLER=$output\$base.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Attach the installer and its checksum to the release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # GoReleaser only hashes what it builds itself, and the installer is
+          # produced afterwards by a separate compiler. Left alone, the one
+          # asset Windows users actually download is the one asset with no
+          # published checksum.
+          $sums = Join-Path $PWD 'dist\checksums.txt'
+          if (-not (Test-Path $sums)) {
+            throw "checksums.txt not found at $sums; GoReleaser did not produce it."
+          }
+
+          $name = Split-Path $env:INSTALLER -Leaf
+          $hash = (Get-FileHash -Algorithm SHA256 $env:INSTALLER).Hash.ToLower()
+
+          # Drop any previous entry first, so re-running a tag cannot write the
+          # file name twice.
+          $lines  = @(Get-Content $sums | Where-Object { $_ -notmatch [regex]::Escape($name) })
+          $lines += "$hash  $name"
+
+          # LF, explicitly. Set-Content would write CRLF on Windows, and
+          # sha256sum -c then looks for a file whose name ends in a carriage
+          # return and reports every line as missing.
+          [System.IO.File]::WriteAllText($sums, ($lines -join "`n") + "`n")
+
+          Get-Content $sums
+
           gh release upload "${{ github.ref_name }}" `
-            "dist\installer\GitPilot_Installer.exe" --clobber
+            "$env:INSTALLER" "$sums" --clobber
 
       - name: Upload build artifacts on failure
         if: failure()
