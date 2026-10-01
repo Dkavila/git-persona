@@ -146,3 +146,87 @@ jobs:
             echo "building $os/$arch"
             GOOS=$os GOARCH=$arch go build -o /dev/null ./cmd/git-pilot
           done
+  # The installer is the one artifact no Go test can cover: it is compiled by a
+  # separate tool, from a script with its own preprocessor and its own failure
+  # modes. Publishing v0.1.0 cost four fixes to this pipeline — an ISPP #elif
+  # bug, a binary looked for in the wrong directory, diff markers pasted into
+  # the workflow and a truncated iscc invocation. Every one of them surfaced
+  # only when a tag was pushed, which is the most expensive place to find them.
+  #
+  # This job compiles the same script with the same pinned compiler the release
+  # uses, so the break lands on the pull request instead.
+  #
+  # It runs on every event rather than filtering with `paths:`. A job skipped by
+  # `paths:` never reports, so a required check configured on it leaves every
+  # unrelated pull request pending forever. Deciding inside the job keeps the
+  # check reportable, and therefore usable as a branch protection requirement.
+  installer:
+    name: installer (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The diff below needs the base commit, which a shallow clone lacks.
+          fetch-depth: 0
+
+      - name: Decide whether the installer needs compiling
+        id: scope
+        shell: bash
+        run: |
+          case "${{ github.event_name }}" in
+            pull_request) base="${{ github.event.pull_request.base.sha }}" ;;
+            push)         base="${{ github.event.before }}" ;;
+            *)            base="" ;;
+          esac
+
+          # No usable base (first push of a branch, a manual run): compile.
+          # Erring towards compiling costs a minute; erring the other way is
+          # how a broken script reaches a tag.
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff --name-only "$base"...HEAD |
+             grep -Eq '^(build/windows/|\.github/workflows/ci\.yml|\.github/actions/inno-setup/)'; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "No installer-related changes in this diff; nothing to compile."
+          fi
+
+      - uses: actions/setup-go@v5
+        if: steps.scope.outputs.needed == 'true'
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Stage a binary for the installer
+        if: steps.scope.outputs.needed == 'true'
+        shell: pwsh
+        # The script refuses to compile without the exe it packages, so the
+        # check needs a real binary. It is never published; only its presence
+        # and path matter here.
+        run: go build -o dist\installer-input\git-pilot.exe .\cmd\git-pilot
+
+      - name: Install Inno Setup
+        id: inno
+        if: steps.scope.outputs.needed == 'true'
+        uses: ./.github/actions/inno-setup
+
+      - name: Compile the installer script
+        if: steps.scope.outputs.needed == 'true'
+        shell: pwsh
+        # The same defines the release passes, so this exercises the real code
+        # path rather than the bare `iscc installer.iss` fallback. The version
+        # is a placeholder: nothing here is published.
+        run: |
+          & "${{ steps.inno.outputs.iscc }}" `
+            "/DBinaryDir=$PWD\dist\installer-input" `
+            "/DAppVersion=0.0.0-ci" `
+            "/DVersionInfo=0.0.0" `
+            "/DOutputDir=$PWD\dist\installer" `
+            "/DOutputBaseFilename=ci-check" `
+            "build\windows\installer.iss"
+
+          if ($LASTEXITCODE -ne 0) { throw "iscc failed with exit code $LASTEXITCODE" }
