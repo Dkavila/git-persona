@@ -93,13 +93,37 @@ jobs:
 
           "INSTALLER=$output\$base.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Attach the installer to the release
+      - name: Attach the installer and its checksum to the release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # GoReleaser only hashes what it builds itself, and the installer is
+          # produced afterwards by a separate compiler. Left alone, the one
+          # asset Windows users actually download is the one asset with no
+          # published checksum.
+          $sums = Join-Path $PWD 'dist\checksums.txt'
+          if (-not (Test-Path $sums)) {
+            throw "checksums.txt not found at $sums; GoReleaser did not produce it."
+          }
+
+          $name = Split-Path $env:INSTALLER -Leaf
+          $hash = (Get-FileHash -Algorithm SHA256 $env:INSTALLER).Hash.ToLower()
+
+          # Drop any previous entry first, so re-running a tag cannot write the
+          # file name twice.
+          $lines  = @(Get-Content $sums | Where-Object { $_ -notmatch [regex]::Escape($name) })
+          $lines += "$hash  $name"
+
+          # LF, explicitly. Set-Content would write CRLF on Windows, and
+          # sha256sum -c then looks for a file whose name ends in a carriage
+          # return and reports every line as missing.
+          [System.IO.File]::WriteAllText($sums, ($lines -join "`n") + "`n")
+
+          Get-Content $sums
+
           gh release upload "${{ github.ref_name }}" `
-            "$env:INSTALLER" --clobber
+            "$env:INSTALLER" "$sums" --clobber
 
       - name: Upload build artifacts on failure
         if: failure()
