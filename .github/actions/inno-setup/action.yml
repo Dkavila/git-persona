@@ -67,7 +67,10 @@ runs:
           throw "Inno Setup $version installed, but ISCC.exe is not at $iscc"
         }
 
-        # Printed so the build log states which compiler produced the artifact.
-        & $iscc /? | Select-Object -First 8
+        # Read from the file, not from `iscc /?`: the help screen exits with
+        # code 1, and the pwsh shell propagates the last exit code, so printing
+        # the banner would fail the step it was meant to document.
+        $build = (Get-Item $iscc).VersionInfo.ProductVersion
+        Write-Host "Inno Setup compiler: $iscc (build $build)"
 
         "iscc=$iscc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
