@@ -73,16 +73,25 @@ jobs:
           # tag such as v1.0.0-rc1 has to lose its suffix here.
           $numeric = ($version -split '-')[0]
 
+          # Named like every other asset: git-pilot_<version>_windows_installer.
+          # No architecture in the name, because there is one installer. It is
+          # built x64compatible, so it runs on ARM64 through emulation while
+          # installing the amd64 binary; calling it amd64 would imply an arm64
+          # installer exists.
+          $base    = "git-pilot_${version}_windows_installer"
           $output  = Join-Path $PWD 'dist\installer'
+
           & "${{ steps.inno.outputs.iscc }}" `
             "/DBinaryDir=$env:INNO_BINARY_DIR" `
             "/DAppVersion=$version" `
             "/DVersionInfo=$numeric" `
             "/DOutputDir=$output" `
-            "/DOutputBaseFilename=GitPilot_Installer" `
+            "/DOutputBaseFilename=$base" `
             "build\windows\installer.iss"
 
           if ($LASTEXITCODE -ne 0) { throw "iscc failed with exit code $LASTEXITCODE" }
+
+          "INSTALLER=$output\$base.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Attach the installer to the release
         shell: pwsh
@@ -90,7 +99,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${{ github.ref_name }}" `
-            "dist\installer\GitPilot_Installer.exe" --clobber
+            "$env:INSTALLER" --clobber
 
       - name: Upload build artifacts on failure
         if: failure()

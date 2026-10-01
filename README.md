@@ -69,7 +69,7 @@ ed25519 key pair, generated on `add`.
 
 ### Windows
 
-Download `GitPilot_Installer.exe` from the
+Download `git-pilot_<version>_windows_installer.exe` from the
 [latest release](https://github.com/Dkavila/git-pilot/releases/latest).
 
 It installs per-user — no administrator prompt — adds itself to your `PATH`,

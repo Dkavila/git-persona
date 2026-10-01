@@ -83,9 +83,9 @@ release:
   footer: |
     ---
 
-    **Windows users:** `GitPilot_Installer.exe` below is a classic GUI
-    installer. It adds the install directory to your user PATH and provides the
-    short `gitp` alias. The `.zip` archive is the portable alternative.
+    **Windows users:** the `..._windows_installer.exe` asset below is a classic
+    GUI installer. It adds the install directory to your user PATH and provides
+    the short `gitp` alias. The `.zip` archive is the portable alternative.
 
 # Package managers.
 #
